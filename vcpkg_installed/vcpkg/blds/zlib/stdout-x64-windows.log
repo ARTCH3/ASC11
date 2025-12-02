@@ -1,0 +1,19 @@
+Downloading https://github.com/madler/zlib/archive/v1.3.1.tar.gz -> madler-zlib-v1.3.1.tar.gz
+Successfully downloaded madler-zlib-v1.3.1.tar.gz
+-- Extracting source C:/Users/GREEN/AppData/Local/vcpkg/downloads/madler-zlib-v1.3.1.tar.gz
+-- Applying patch 0001-Prevent-invalid-inclusions-when-HAVE_-is-set-to-0.patch
+-- Applying patch 0002-build-static-or-shared-not-both.patch
+-- Applying patch 0003-android-and-mingw-fixes.patch
+-- Using source at C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/blds/zlib/src/v1.3.1-2e5db616bf.clean
+-- Found external ninja('1.12.1').
+-- Configuring x64-windows
+-- Building x64-windows-dbg
+-- Building x64-windows-rel
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/share/zlib/vcpkg-cmake-wrapper.cmake
+-- Fixing pkgconfig file: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/lib/pkgconfig/zlib.pc
+-- Using cached msys2-mingw-w64-x86_64-pkgconf-1~2.3.0-1-any.pkg.tar.zst
+-- Using cached msys2-msys2-runtime-3.5.4-2-x86_64.pkg.tar.zst
+-- Using msys root at C:/Users/GREEN/AppData/Local/vcpkg/downloads/tools/msys2/21caed2f81ec917b
+-- Fixing pkgconfig file: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/debug/lib/pkgconfig/zlib.pc
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/share/zlib/copyright
+-- Выполнение проверки после сборки

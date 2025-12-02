@@ -1,0 +1,16 @@
+Change Dir: 'C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/blds/utf8proc/x64-windows-rel'
+
+Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe" -v -v -j7 install
+[1/3] C:\PROGRA~1\MICROS~1\2022\COMMUN~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe   -DUTF8PROC_EXPORTS -Dutf8proc_EXPORTS -IC:\ASCIIproject\ASC11\vcpkg_installed\vcpkg\blds\utf8proc\src\v2.11.2-a34d266797.clean /nologo /DWIN32 /D_WINDOWS /utf-8 /MP  /MD /O2 /Oi /Gy /DNDEBUG /Z7 /showIncludes /FoCMakeFiles\utf8proc.dir\utf8proc.c.obj /FdCMakeFiles\utf8proc.dir\ /FS -c C:\ASCIIproject\ASC11\vcpkg_installed\vcpkg\blds\utf8proc\src\v2.11.2-a34d266797.clean\utf8proc.c
+[2/3] C:\WINDOWS\system32\cmd.exe /C "cd . && C:\Users\GREEN\AppData\Local\vcpkg\downloads\tools\cmake-3.30.1-windows\cmake-3.30.1-windows-i386\bin\cmake.exe -E vs_link_dll --intdir=CMakeFiles\utf8proc.dir --rc=C:\PROGRA~2\WINDOW~4\10\bin\100261~1.0\x64\rc.exe --mt=C:\PROGRA~2\WINDOW~4\10\bin\100261~1.0\x64\mt.exe --manifests  -- C:\PROGRA~1\MICROS~1\2022\COMMUN~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\link.exe  CMakeFiles\utf8proc.dir\utf8proc.c.obj  /out:utf8proc.dll /implib:utf8proc.lib /pdb:utf8proc.pdb /dll /version:3.2 /machine:x64 /nologo /DEBUG /INCREMENTAL:NO /OPT:REF /OPT:ICF  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+[2/3] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\ASCIIproject\ASC11\vcpkg_installed\vcpkg\blds\utf8proc\x64-windows-rel && C:\Users\GREEN\AppData\Local\vcpkg\downloads\tools\cmake-3.30.1-windows\cmake-3.30.1-windows-i386\bin\cmake.exe -P cmake_install.cmake"
+-- Install configuration: "Release"
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/include/utf8proc.h
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/utf8proc.lib
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/bin/utf8proc.dll
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/pkgconfig/libutf8proc.pc
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/cmake/utf8proc/utf8proc-targets.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/cmake/utf8proc/utf8proc-targets-release.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/cmake/utf8proc/utf8proc-config.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/cmake/utf8proc/utf8proc-config-version.cmake
+

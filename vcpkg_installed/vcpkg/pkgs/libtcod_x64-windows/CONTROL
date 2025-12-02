@@ -1,0 +1,37 @@
+Package: libtcod
+Version: 2.2.1
+Depends: stb, vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-windows
+Multi-Arch: same
+Maintainer: Kyle Benesch <4b796c65+github@gmail.com>
+Abi: 9257aaea7a46df08f763bcbeb3e87755898f2f9843b36fb8da19b9d6a021ad0c
+Description: Common algorithms and tools for roguelikes.
+Default-Features: png, sdl, unicode, zlib
+
+Package: libtcod
+Feature: png
+Depends: lodepng
+Architecture: x64-windows
+Multi-Arch: same
+Description: Support for reading and writing PNG files.  Required to save screenshots and to load tilesets from files.
+
+Package: libtcod
+Feature: sdl
+Depends: sdl3
+Architecture: x64-windows
+Multi-Arch: same
+Description: Support for SDL windows and events with the libtcod context.
+
+Package: libtcod
+Feature: unicode
+Depends: utf8proc
+Architecture: x64-windows
+Multi-Arch: same
+Description: Support for non-ASCII characters.  Required for text printing functions
+
+Package: libtcod
+Feature: zlib
+Depends: zlib
+Architecture: x64-windows
+Multi-Arch: same
+Description: Support for REXPaint files and TCODZip archives.

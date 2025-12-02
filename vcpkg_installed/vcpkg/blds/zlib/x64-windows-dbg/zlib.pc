@@ -1,0 +1,13 @@
+prefix=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/debug
+exec_prefix=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/debug
+libdir=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/debug/lib
+sharedlibdir=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/debug/lib
+includedir=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/debug/include
+
+Name: zlib
+Description: zlib compression library
+Version: 1.3.1
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -lzlibd
+Cflags: -I${includedir}

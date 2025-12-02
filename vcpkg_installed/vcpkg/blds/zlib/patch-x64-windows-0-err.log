@@ -1,0 +1,6 @@
+Checking patch zconf.h.cmakein...
+Hunk #1 succeeded at 436 (offset 2 lines).
+Checking patch zconf.h.in...
+Hunk #1 succeeded at 434 (offset 2 lines).
+Applied patch zconf.h.cmakein cleanly.
+Applied patch zconf.h.in cleanly.

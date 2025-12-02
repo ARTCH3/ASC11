@@ -1,0 +1,9 @@
+Downloading https://github.com/libtcod/libtcod/archive/2.2.1.tar.gz -> libtcod-libtcod-2.2.1.tar.gz
+Successfully downloaded libtcod-libtcod-2.2.1.tar.gz
+-- Extracting source C:/Users/GREEN/AppData/Local/vcpkg/downloads/libtcod-libtcod-2.2.1.tar.gz
+-- Using source at C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/blds/libtcod/src/2.2.1-c2f9ef7b3d.clean
+-- Found external ninja('1.12.1').
+-- Configuring x64-windows
+-- Building x64-windows-dbg
+-- Building x64-windows-rel
+-- Выполнение проверки после сборки

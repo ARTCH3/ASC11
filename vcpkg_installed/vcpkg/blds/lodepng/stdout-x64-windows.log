@@ -1,0 +1,12 @@
+-- Note: lodepng only supports static library linkage. Building static library.
+Downloading https://github.com/lvandeve/lodepng/archive/8c6a9e30576f07bf470ad6f09458a2dcd7a6a84a.tar.gz -> lvandeve-lodepng-8c6a9e30576f07bf470ad6f09458a2dcd7a6a84a.tar.gz
+Successfully downloaded lvandeve-lodepng-8c6a9e30576f07bf470ad6f09458a2dcd7a6a84a.tar.gz
+-- Extracting source C:/Users/GREEN/AppData/Local/vcpkg/downloads/lvandeve-lodepng-8c6a9e30576f07bf470ad6f09458a2dcd7a6a84a.tar.gz
+-- Using source at C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/blds/lodepng/src/dcd7a6a84a-1b95b8ca64.clean
+-- Found external ninja('1.12.1').
+-- Configuring x64-windows
+-- Building x64-windows-dbg
+-- Building x64-windows-rel
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/share/lodepng/usage
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/share/lodepng/copyright
+-- Выполнение проверки после сборки

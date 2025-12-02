@@ -1,0 +1,31 @@
+Downloading https://github.com/libsdl-org/SDL/archive/release-3.2.26.tar.gz -> libsdl-org-SDL-release-3.2.26.tar.gz
+Successfully downloaded libsdl-org-SDL-release-3.2.26.tar.gz
+-- Extracting source C:/Users/GREEN/AppData/Local/vcpkg/downloads/libsdl-org-SDL-release-3.2.26.tar.gz
+-- Applying patch fix-freebsd.patch
+-- Using source at C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/blds/sdl3/src/ase-3.2.26-279ed84f1e.clean
+-- Found external ninja('1.12.1').
+-- Configuring x64-windows
+CMake Warning at C:/ASCIIproject/ASC11/vcpkg_installed/x64-windows/share/vcpkg-cmake/vcpkg_cmake_configure.cmake:344 (message):
+  The following variables are not used in CMakeLists.txt:
+
+      SDL_UNIX_CONSOLE_BUILD
+
+  Please recheck them and remove the unnecessary options from the
+  `vcpkg_cmake_configure` call.
+
+  If these options should still be passed for whatever reason, please use the
+  `MAYBE_UNUSED_VARIABLES` argument.
+Call Stack (most recent call first):
+  C:/Users/GREEN/AppData/Local/vcpkg/registries/git-trees/9e3b711cecef4a6c16644131eb29a4ea698865e4/portfile.cmake:47 (vcpkg_cmake_configure)
+  scripts/ports.cmake:203 (include)
+
+
+-- Building x64-windows-dbg
+-- Building x64-windows-rel
+-- Fixing pkgconfig file: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/sdl3_x64-windows/lib/pkgconfig/sdl3.pc
+-- Using cached msys2-mingw-w64-x86_64-pkgconf-1~2.3.0-1-any.pkg.tar.zst
+-- Using cached msys2-msys2-runtime-3.5.4-2-x86_64.pkg.tar.zst
+-- Using msys root at C:/Users/GREEN/AppData/Local/vcpkg/downloads/tools/msys2/21caed2f81ec917b
+-- Fixing pkgconfig file: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/sdl3_x64-windows/debug/lib/pkgconfig/sdl3.pc
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/sdl3_x64-windows/share/sdl3/usage
+-- Выполнение проверки после сборки

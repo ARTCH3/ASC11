@@ -1,0 +1,18 @@
+Change Dir: 'C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/blds/lodepng/x64-windows-dbg'
+
+Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe" -v -v -j7 install
+[1/5] C:\PROGRA~1\MICROS~1\2022\COMMUN~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe     /nologo /DWIN32 /D_WINDOWS /utf-8 /MP  /MDd /Z7 /Ob0 /Od /RTC1 /showIncludes /FoCMakeFiles\lodepng-c.dir\lodepng.c.obj /FdCMakeFiles\lodepng-c.dir\lodepng-c.pdb /FS -c C:\ASCIIproject\ASC11\vcpkg_installed\vcpkg\blds\lodepng\src\dcd7a6a84a-1b95b8ca64.clean\lodepng.c
+[2/5] C:\WINDOWS\system32\cmd.exe /C "cd . && C:\PROGRA~1\MICROS~1\2022\COMMUN~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\lib.exe  /machine:x64 /nologo /out:lodepng-c.lib CMakeFiles\lodepng-c.dir\lodepng.c.obj && cd ."
+[3/5] C:\PROGRA~1\MICROS~1\2022\COMMUN~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\cl.exe   /TP   /nologo /DWIN32 /D_WINDOWS /utf-8 /GR /EHsc /MP  /MDd /Z7 /Ob0 /Od /RTC1 /showIncludes /FoCMakeFiles\lodepng.dir\lodepng.cpp.obj /FdCMakeFiles\lodepng.dir\lodepng.pdb /FS -c C:\ASCIIproject\ASC11\vcpkg_installed\vcpkg\blds\lodepng\src\dcd7a6a84a-1b95b8ca64.clean\lodepng.cpp
+[4/5] C:\WINDOWS\system32\cmd.exe /C "cd . && C:\PROGRA~1\MICROS~1\2022\COMMUN~1\VC\Tools\MSVC\1444~1.352\bin\Hostx64\x64\lib.exe  /machine:x64 /nologo /out:lodepng.lib CMakeFiles\lodepng.dir\lodepng.cpp.obj && cd ."
+[4/5] C:\WINDOWS\system32\cmd.exe /C "cd /D C:\ASCIIproject\ASC11\vcpkg_installed\vcpkg\blds\lodepng\x64-windows-dbg && C:\Users\GREEN\AppData\Local\vcpkg\downloads\tools\cmake-3.30.1-windows\cmake-3.30.1-windows-i386\bin\cmake.exe -P cmake_install.cmake"
+-- Install configuration: "Debug"
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/debug/share/lodepng/lodepng-config.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/debug/lib/lodepng.lib
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/debug/share/lodepng/lodepng-targets.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/debug/share/lodepng/lodepng-targets-debug.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/debug/share/lodepng-c/lodepng-c-config.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/debug/lib/lodepng-c.lib
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/debug/share/lodepng-c/lodepng-c-targets.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/debug/share/lodepng-c/lodepng-c-targets-debug.cmake
+

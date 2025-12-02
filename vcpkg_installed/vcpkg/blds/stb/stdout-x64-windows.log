@@ -1,0 +1,9 @@
+Downloading https://github.com/nothings/stb/archive/f75e8d1cad7d90d72ef7a4661f1b994ef78b4e31.tar.gz -> nothings-stb-f75e8d1cad7d90d72ef7a4661f1b994ef78b4e31.tar.gz
+Successfully downloaded nothings-stb-f75e8d1cad7d90d72ef7a4661f1b994ef78b4e31.tar.gz
+-- Extracting source C:/Users/GREEN/AppData/Local/vcpkg/downloads/nothings-stb-f75e8d1cad7d90d72ef7a4661f1b994ef78b4e31.tar.gz
+-- Using source at C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/blds/stb/src/4ef78b4e31-bf024d35de.clean
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/stb_x64-windows/share/stb/FindStb.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/stb_x64-windows/share/stb/vcpkg-cmake-wrapper.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/stb_x64-windows/share/stb/usage
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/stb_x64-windows/share/stb/copyright
+-- Выполнение проверки после сборки

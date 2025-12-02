@@ -1,0 +1,9 @@
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/share/lodepng/lodepng-config.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/lib/lodepng.lib
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/share/lodepng/lodepng-targets.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/share/lodepng/lodepng-targets-release.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/share/lodepng-c/lodepng-c-config.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/lib/lodepng-c.lib
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/share/lodepng-c/lodepng-c-targets.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/share/lodepng-c/lodepng-c-targets-release.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/lodepng_x64-windows/include/lodepng.h

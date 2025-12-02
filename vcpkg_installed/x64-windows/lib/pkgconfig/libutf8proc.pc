@@ -1,0 +1,11 @@
+prefix=${pcfiledir}/../..
+exec_prefix=${prefix}/bin
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: libutf8proc
+Description: UTF8 processing
+Version: 2.11.2
+Libs: "-L${libdir}" -lutf8proc
+Cflags: "-I${includedir}" -DUTF8PROC_EXPORTS
+

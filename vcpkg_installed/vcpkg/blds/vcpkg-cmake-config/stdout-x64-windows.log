@@ -1,0 +1,4 @@
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/vcpkg-cmake-config_x64-windows/share/vcpkg-cmake-config/vcpkg_cmake_config_fixup.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/vcpkg-cmake-config_x64-windows/share/vcpkg-cmake-config/vcpkg-port-config.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/vcpkg-cmake-config_x64-windows/share/vcpkg-cmake-config/copyright
+-- Пропуск проверки после сборки из-за VCPKG_POLICY_EMPTY_PACKAGE

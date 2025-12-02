@@ -1,0 +1,8 @@
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/include/utf8proc.h
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/utf8proc.lib
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/bin/utf8proc.dll
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/pkgconfig/libutf8proc.pc
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/cmake/utf8proc/utf8proc-targets.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/cmake/utf8proc/utf8proc-targets-release.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/cmake/utf8proc/utf8proc-config.cmake
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/cmake/utf8proc/utf8proc-config-version.cmake

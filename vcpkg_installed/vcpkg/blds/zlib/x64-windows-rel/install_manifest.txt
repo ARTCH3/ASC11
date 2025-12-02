@@ -1,0 +1,4 @@
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/lib/zlib.lib
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/bin/zlib1.dll
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/include/zconf.h
+C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/zlib_x64-windows/include/zlib.h

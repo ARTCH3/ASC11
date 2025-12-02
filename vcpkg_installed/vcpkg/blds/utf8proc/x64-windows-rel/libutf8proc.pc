@@ -1,0 +1,10 @@
+prefix=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows
+exec_prefix=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/bin
+libdir=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib
+includedir=C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/include
+
+Name: libutf8proc
+Description: UTF8 processing
+Version: 2.11.2
+Libs: -L${libdir} -lutf8proc
+Cflags: -I${includedir} -DUTF8PROC_EXPORTS

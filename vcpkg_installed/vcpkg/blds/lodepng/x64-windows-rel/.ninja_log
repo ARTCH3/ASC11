@@ -1,0 +1,6 @@
+# ninja log v6
+13	1890	7863951877821527	CMakeFiles/lodepng-c.dir/lodepng.c.obj	916ee67ba6e9bde8
+1892	1945	7863951896615470	lodepng-c.lib	277bcd25eb15812
+8	2417	7863951877776313	CMakeFiles/lodepng.dir/lodepng.cpp.obj	314ac501fad6373f
+2417	2465	7863951901863272	lodepng.lib	43ee7305d65ef039
+2465	2530	7863951902345815	CMakeFiles/install.util	898506ecce235ca5

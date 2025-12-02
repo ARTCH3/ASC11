@@ -1,0 +1,44 @@
+# Папка локальных настроек VS
+.vs/
+
+# Папки сборки, создаваемые CMake/VS
+[Bb]uild*/
+[Oo]ut*/
+cmake-build-*/
+x64/
+x86/
+[Dd]ebug/
+[Rr]elease/
+
+# Файлы решений и проектов, которые генерирует CMake внутри build/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Системные файлы VS
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.db
+*.opendb
+*.VC.db
+
+# Файлы CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CMakeUserPresets.json
+Makefile
+*.cmake
+!CMakeLists.txt  # Исключение: сам файл CMakeLists.txt НЕ игнорировать
+
+# Скомпилированные файлы
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib

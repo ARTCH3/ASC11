@@ -1,0 +1,16 @@
+Downloading https://github.com/JuliaLang/utf8proc/archive/v2.11.2.tar.gz -> JuliaLang-utf8proc-v2.11.2.tar.gz
+Successfully downloaded JuliaLang-utf8proc-v2.11.2.tar.gz
+-- Extracting source C:/Users/GREEN/AppData/Local/vcpkg/downloads/JuliaLang-utf8proc-v2.11.2.tar.gz
+-- Using source at C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/blds/utf8proc/src/v2.11.2-a34d266797.clean
+-- Found external ninja('1.12.1').
+-- Configuring x64-windows
+-- Building x64-windows-dbg
+-- Building x64-windows-rel
+-- Fixing pkgconfig file: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/lib/pkgconfig/libutf8proc.pc
+-- Using cached msys2-mingw-w64-x86_64-pkgconf-1~2.3.0-1-any.pkg.tar.zst
+-- Using cached msys2-msys2-runtime-3.5.4-2-x86_64.pkg.tar.zst
+-- Using msys root at C:/Users/GREEN/AppData/Local/vcpkg/downloads/tools/msys2/21caed2f81ec917b
+-- Fixing pkgconfig file: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/debug/lib/pkgconfig/libutf8proc.pc
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/share/unofficial-utf8proc/unofficial-utf8proc-config.cmake
+-- Installing: C:/ASCIIproject/ASC11/vcpkg_installed/vcpkg/pkgs/utf8proc_x64-windows/share/utf8proc/copyright
+-- Выполнение проверки после сборки
