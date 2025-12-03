@@ -1,0 +1,44 @@
+# Папки сборки, генерируемые CMake и IDE
+[Bb]uild*/
+[Oo]ut*/
+[Oo]bj*/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Папка с локальными настройками Visual Studio (кеш, пользовательские настройки)
+.vs/
+
+# Зависимости и локальная установка vcpkg (папка vcpkg_installed создаётся автоматически)
+vcpkg/
+vcpkg_installed/
+vcpkg_installed.txt
+vcpkg-manifest-install.log
+
+# Скомпилированные исполняемые файлы и библиотеки
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.obj
+*.pdb
+*.ilk
+
+# Файлы кеша CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Системные файлы
+.DS_Store
+Thumbs.db
