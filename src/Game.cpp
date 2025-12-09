@@ -110,8 +110,6 @@ void GameState::processItems()
             // Сначала увеличиваем максимум здоровья, если предмет дает бонус.
             if (item.maxHealthBoost > 0) {
                 player.maxHealth += item.maxHealthBoost;
-                // Даем игроку сразу бонус к текущему здоровью, но не выше нового максимума.
-                player.health = std::min(player.health + item.maxHealthBoost, player.maxHealth);
             }
 
             // Затем лечим, если предмет лечит.
