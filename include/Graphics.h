@@ -2,6 +2,7 @@
 
 #include <libtcod.hpp>
 #include <memory>
+#include <vector>
 
 // Вперед объявляем классы, чтобы не тянуть сюда все заголовки.
 class Map;
@@ -37,7 +38,10 @@ public:
     void drawEntity(const Entity& entity);
     void drawPlayer(const Entity& player); // Специальный метод для игрока с динамическим цветом
     void drawItem(int x, int y);
-    void drawUI(const Entity& player, int level);
+    void drawUI(const Entity& player,
+                const std::vector<Entity>& enemies,
+                int level,
+                const Map& map);
     void refreshScreen();
     void clearScreen();
     // Читает одну клавишу. Возвращает true если что-то нажали.

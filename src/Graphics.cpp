@@ -2,10 +2,12 @@
 
 #include "Map.h"
 #include "Entity.h"
+#include <algorithm>
 #include <cmath>
 #include <SDL2/SDL.h>
 #include <string>
 #include <cstring>
+#include <vector>
 #include <SDL2/SDL.h>
 
 Graphics::Graphics(int width, int height)
@@ -211,10 +213,23 @@ static std::string toRoman(int num)
     return result;
 }
 
-void Graphics::drawUI(const Entity& player, int level)
+// Простая линейная интерполяция между двумя цветами.
+static tcod::ColorRGB lerpColor(const tcod::ColorRGB& a, const tcod::ColorRGB& b, float t)
 {
-    // Рисуем UI внизу экрана
-    int uiY = Map::HEIGHT + 1;
+    const float clamped = std::clamp(t, 0.0f, 1.0f);
+    return tcod::ColorRGB{
+        static_cast<uint8_t>(a.r + (b.r - a.r) * clamped),
+        static_cast<uint8_t>(a.g + (b.g - a.g) * clamped),
+        static_cast<uint8_t>(a.b + (b.b - a.b) * clamped)};
+}
+
+void Graphics::drawUI(const Entity& player,
+                      const std::vector<Entity>& enemies,
+                      int level,
+                      const Map& map)
+{
+    // Рисуем UI сразу под картой (используем первую доступную строку)
+    int uiY = Map::HEIGHT;
 
     // Очищаем строки UI
     for (int y = uiY; y < screenHeight; ++y) {
@@ -224,100 +239,180 @@ void Graphics::drawUI(const Entity& player, int level)
         }
     }
 
-    // Разбиваем текст на несколько строк, чтобы не переносился
     char buffer[256];
-    
-    // Вычисляем цвет здоровья (от зеленого к красному)
-    float healthPercent = static_cast<float>(player.health) / static_cast<float>(player.maxHealth);
-    int r = static_cast<int>(255 * (1.0f - healthPercent)); // Красный увеличивается
-    int g = static_cast<int>(255 * healthPercent);           // Зеленый уменьшается
-    int b = 0;
-    tcod::ColorRGB healthColor{static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b)};
-    
-    // Первая строка: позиция, здоровье (с цветом) и уровень
-    // Используем простой подход - сначала выводим всю строку белым, потом перезаписываем здоровье цветом
-    snprintf(buffer, sizeof(buffer),
-             "Position: (%d, %d) | Health: %d/%d | Ascension: %s",
-             player.pos.x, player.pos.y, player.health, player.maxHealth, toRoman(level).c_str());
-    
-    // Проверяем границы перед выводом (используем screenWidth и screenHeight)
-    if (uiY >= 0 && uiY < screenHeight) {
-        // Выводим всю строку белым (без Unicode для безопасности)
-        try {
-            if (screenWidth > 0) {
-                tcod::print(console, {0, uiY}, buffer, tcod::ColorRGB{255, 255, 255}, std::nullopt);
-                
-                // Теперь перезаписываем только число здоровья цветом
-                // Находим позицию числа здоровья в строке
-                int healthStartX = 0;
-                snprintf(buffer, sizeof(buffer), "Position: (%d, %d) | Health: ", player.pos.x, player.pos.y);
-                healthStartX = static_cast<int>(strlen(buffer));
-                
-                // Выводим только число здоровья цветом
-                snprintf(buffer, sizeof(buffer), "%d", player.health);
-                if (healthStartX >= 0 && healthStartX < screenWidth) {
-                    tcod::print(console, {healthStartX, uiY}, buffer, healthColor, std::nullopt);
-                }
-            }
-        } catch (const std::exception&) {
-            // Игнорируем ошибки вывода UI
+
+    // --- Линия 1: здоровье игрока — полоса, затем цифры справа ---
+    const float healthPercent = std::clamp(static_cast<float>(player.health) / static_cast<float>(player.maxHealth), 0.0f, 1.0f);
+
+    // Метка HP слева с символом
+    try {
+        tcod::print(console,
+                    {0, uiY},
+                    "✙ Hero HP:",
+                    tcod::ColorRGB{200, 200, 200},
+                    std::nullopt);
+    } catch (const std::exception&) {}
+
+    // Рисуем полосу сразу после метки
+    const int barX = 10;
+    // Оставляем место под пробел и числа справа: " 000/000"
+    const int reserveForText = 8;
+    const int barWidth = std::max(0, screenWidth - barX - reserveForText);
+    const int filled = static_cast<int>(std::round(healthPercent * barWidth));
+
+    // Градиент перевернутый: красный -> желтый -> зеленый -> синий (совпадает с состояниями игрока, но в обратном направлении)
+    auto hpGradient = [](float t) {
+        const tcod::ColorRGB red{255, 60, 60};
+        const tcod::ColorRGB yellow{255, 220, 80};
+        const tcod::ColorRGB green{80, 220, 120};
+        const tcod::ColorRGB blue{80, 160, 255};
+        const float p = std::clamp(t, 0.0f, 1.0f);
+        if (p < 0.33f) {
+            const float lt = p / 0.33f;
+            return lerpColor(red, yellow, lt);
+        } else if (p < 0.66f) {
+            const float lt = (p - 0.33f) / 0.33f;
+            return lerpColor(yellow, green, lt);
+        } else {
+            const float lt = (p - 0.66f) / 0.34f;
+            return lerpColor(green, blue, lt);
         }
-    }
-    
-    // Вторая строка: управление
-    if (uiY + 1 >= 0 && uiY + 1 < screenHeight) {
-        try {
-            if (screenWidth > 0) {
-                snprintf(buffer, sizeof(buffer),
-                         "Move: [WASD] | Diag: [QEZC] | Fullscreen: [F11] | Quit: [ESC]");
-                tcod::print(console, {0, uiY + 1}, buffer, tcod::ColorRGB{200, 200, 200}, std::nullopt);
-            }
-        } catch (const std::exception&) {
-            // Игнорируем ошибки вывода UI
+    };
+
+    for (int i = 0; i < barWidth; ++i) {
+        const bool isFilled = i < filled;
+        tcod::ColorRGB c = tcod::ColorRGB{60, 60, 60}; // фон для пустых
+        if (isFilled) {
+            const float t = (barWidth <= 1) ? 0.0f : static_cast<float>(i) / static_cast<float>(barWidth - 1);
+            c = hpGradient(t);
+        }
+        if (console.in_bounds({barX + i, uiY})) {
+            console.at({barX + i, uiY}).ch = 0x2588; // блок
+            console.at({barX + i, uiY}).fg = c;
         }
     }
 
-    // Третья строка: легенда (обновленная)
-    // Выводим текст по частям, чтобы правильно отобразить Unicode символы
-    if (uiY + 2 >= 0 && uiY + 2 < screenHeight) {
-        try {
-            if (screenWidth > 0) {
-                // Выводим текст с символами из enum GameSymbols
-                // Player: символ игрока
-                snprintf(buffer, sizeof(buffer), "Player: %c | Enemy: %c (rat) | Item: ", 
-                         static_cast<char>(SYM_PLAYER), static_cast<char>(SYM_ENEMY));
-                int xPos = static_cast<int>(strlen(buffer));
-                tcod::print(console, {0, uiY + 2}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
-                
-                // Выводим символ предмета (♥) напрямую
-                if (xPos < screenWidth && console.in_bounds({xPos, uiY + 2})) {
-                    console.at({xPos, uiY + 2}).ch = SYM_ITEM;
-                    console.at({xPos, uiY + 2}).fg = tcod::ColorRGB{180, 180, 180};
-                    xPos++;
-                }
-                
-                // Выводим продолжение текста
-                snprintf(buffer, sizeof(buffer), " (Cure)");
-                if (xPos < screenWidth) {
-                    tcod::print(console, {xPos, uiY + 2}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
-                }
+    // Цифры справа от полосы
+    snprintf(buffer, sizeof(buffer), " %d/%d", player.health, player.maxHealth);
+    const int hpTextX = barX + barWidth;
+    try {
+        tcod::print(console,
+                    {hpTextX, uiY},
+                    buffer,
+                    tcod::ColorRGB{240, 240, 240},
+                    std::nullopt);
+    } catch (const std::exception&) {}
+
+    // --- Линия-разделитель между HP и уровнем ---
+    if (uiY + 1 < screenHeight) {
+        for (int x = 0; x < screenWidth; ++x) {
+            if (console.in_bounds({x, uiY + 1})) {
+                console.at({x, uiY + 1}).ch = 0x2500; // горизонтальная линия
+                console.at({x, uiY + 1}).fg = tcod::ColorRGB{80, 80, 80};
             }
-        } catch (const std::exception&) {
-            // Игнорируем ошибки вывода UI
         }
     }
-    
-    // Четвертая строка: Exit с символом
-    if (uiY + 3 >= 0 && uiY + 3 < screenHeight) {
-        try {
-            if (screenWidth > 0) {
-                // Выводим текст "Exit: ^" с символом в строке
-                snprintf(buffer, sizeof(buffer), "Exit: %c", SYM_EXIT);
-                tcod::print(console, {0, uiY + 3}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
-            }
-        } catch (const std::exception&) {
-            // Игнорируем ошибки вывода UI
+
+    // --- Линия 2: уровень и позиция компактно ---
+    snprintf(buffer,
+             sizeof(buffer),
+             "↑ Level: %s | Pos %d,%d",
+             toRoman(level).c_str(),
+             player.pos.x,
+             player.pos.y);
+    try {
+        tcod::print(console, {0, uiY + 2}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
+    } catch (const std::exception&) {}
+
+    // --- Линия 3: управление ---
+    try {
+        tcod::print(console,
+                    {0, uiY + 3},
+                    "→ Move: WASD | Diag QEZC | Full F11 | ESC",
+                    tcod::ColorRGB{200, 200, 200},
+                    std::nullopt);
+    } catch (const std::exception&) {}
+
+    // --- Линия 4: легенда с цветами ---
+    int legendY = uiY + 4;
+    int cursorX = 0;
+    auto safePrint = [&](const std::string& text, tcod::ColorRGB color) {
+        if (cursorX < screenWidth) {
+            tcod::print(console, {cursorX, legendY}, text.c_str(), color, std::nullopt);
+            cursorX += static_cast<int>(text.size());
         }
+    };
+
+    safePrint("🛠Legend ", tcod::ColorRGB{180, 180, 180});
+    safePrint("@", tcod::ColorRGB{100, 200, 255});
+    safePrint(" Hero ", tcod::ColorRGB{180, 180, 180});
+    safePrint("r", tcod::ColorRGB{255, 50, 50});
+    safePrint(" Rat ", tcod::ColorRGB{180, 180, 180});
+    // Сердечко предмета
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = SYM_ITEM;
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{255, 180, 120};
+    }
+    cursorX += 1;
+    safePrint(" Medkit  ", tcod::ColorRGB{180, 180, 180});
+    safePrint("^ Exit", tcod::ColorRGB{200, 200, 120});
+
+    // --- Линии 5+: список видимых врагов с их HP ---
+    const int headerY = uiY + 4;
+    try {
+        tcod::print(console,
+                    {0, headerY},
+                    "Enemies in sight:",
+                    tcod::ColorRGB{210, 210, 210},
+                    std::nullopt);
+    } catch (const std::exception&) {}
+
+    const int columnWidth = 14; // компактнее, без полосок баров
+    const int maxColumns = std::max(1, screenWidth / columnWidth);
+    const int maxRows = std::max(0, screenHeight - (headerY + 1));
+
+    int slot = 0;
+    for (const auto& enemy : enemies) {
+        if (!map.isVisible(enemy.pos.x, enemy.pos.y) || !enemy.isAlive()) {
+            continue;
+        }
+
+        const int row = slot / maxColumns;
+        if (row >= maxRows) {
+            break; // Больше нет места
+        }
+        const int col = slot % maxColumns;
+
+        const int enemyY = headerY + 1 + row;
+        cursorX = col * columnWidth;
+
+        // Название моба его цветом
+        const std::string mobName = "Rat";
+        try {
+            tcod::print(console, {cursorX, enemyY}, mobName.c_str(), enemy.color, std::nullopt);
+        } catch (const std::exception&) {}
+        cursorX += static_cast<int>(mobName.size());
+
+        // Координаты в скобках
+        snprintf(buffer, sizeof(buffer), "(%d,%d)", enemy.pos.x, enemy.pos.y);
+        try {
+            tcod::print(console, {cursorX, enemyY}, buffer, tcod::ColorRGB{170, 170, 170}, std::nullopt);
+        } catch (const std::exception&) {}
+        cursorX += static_cast<int>(strlen(buffer));
+
+        // Цветные цифры HP (градиент от синего к красному)
+        const float enemyPct = static_cast<float>(enemy.health) / static_cast<float>(enemy.maxHealth);
+        const tcod::ColorRGB enemyHpColor = lerpColor(
+            tcod::ColorRGB{80, 120, 255},   // полный HP — сине-голубой
+            tcod::ColorRGB{255, 50, 50},    // низкий HP — красный
+            1.0f - std::clamp(enemyPct, 0.0f, 1.0f));
+
+        snprintf(buffer, sizeof(buffer), "%d/%d", enemy.health, enemy.maxHealth);
+        try {
+            tcod::print(console, {cursorX, enemyY}, buffer, enemyHpColor, std::nullopt);
+        } catch (const std::exception&) {}
+
+        slot++;
     }
 }
 
