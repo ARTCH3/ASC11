@@ -7,9 +7,12 @@
 // Структура для предмета на карте.
 struct Item {
     Position pos;
-    int healAmount; // Сколько здоровья восстанавливает
+    int healAmount;      // Сколько здоровья восстанавливает
+    int maxHealthBoost;  // Насколько увеличивает максимум здоровья
+    char symbol;         // Символ, который рисуем на карте
 
-    Item(int x, int y, int heal) : pos(x, y), healAmount(heal) {}
+    Item(int x, int y, int heal, int boost, char sym)
+        : pos(x, y), healAmount(heal), maxHealthBoost(boost), symbol(sym) {}
 };
 
 class Map {
@@ -42,7 +45,9 @@ public:
 
     // Предметы на карте
     std::vector<Item> items;
-    void addItem(int x, int y, int healAmount);
+    void addItem(int x, int y, int healAmount, int maxHealthBoost, char symbol);
+    void addHealItem(int x, int y, int healAmount);
+    void addMaxHealthItem(int x, int y, int maxHealthBoost);
     Item* getItemAt(int x, int y);
     void removeItem(int index);
     

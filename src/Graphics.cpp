@@ -146,13 +146,22 @@ void Graphics::drawEntity(const Entity& entity)
     }
 }
 
-void Graphics::drawItem(int x, int y)
+void Graphics::drawItem(const Item& item)
 {
+    int x = item.pos.x;
+    int y = item.pos.y;
+
     if (x >= 0 && x < Map::WIDTH && y >= 0 && y < Map::HEIGHT &&
         x < screenWidth && y < screenHeight &&
         console.in_bounds({x, y})) {
-        console.at({x, y}).ch = SYM_ITEM;
-        console.at({x, y}).fg = colorItem;
+        // Для предмета повышения максимума здоровья делаем цвет зеленым,
+        // для обычного лечащего предмета используем стандартный цвет.
+        tcod::ColorRGB itemColor = (item.symbol == SYM_MAX_HP)
+            ? tcod::ColorRGB{150, 255, 150}
+            : colorItem;
+
+        console.at({x, y}).ch = item.symbol;
+        console.at({x, y}).fg = itemColor;
     }
 }
 
@@ -297,7 +306,7 @@ void Graphics::drawUI(const Entity& player, int level)
                 }
                 
                 // Выводим продолжение текста
-                snprintf(buffer, sizeof(buffer), " (Cure)");
+                snprintf(buffer, sizeof(buffer), " (Cure) | Max HP: %c ( +1..+5 )", SYM_MAX_HP);
                 if (xPos < screenWidth) {
                     tcod::print(console, {xPos, uiY + 2}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
                 }
