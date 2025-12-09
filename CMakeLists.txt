@@ -21,6 +21,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE include)
 set(CMAKE_TOOLCHAIN_FILE "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
     CACHE STRING "Vcpkg toolchain file")
 
+# Говорим vcpkg, куда складывать скачанные архивы (папка с правами записи)
+set(ENV{VCPKG_DOWNLOADS} "C:/vcpkg/downloads")
+
 find_package(libtcod CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE libtcod::libtcod)
 
