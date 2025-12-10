@@ -106,8 +106,8 @@ void GameState::processCombat()
                     knockbackDy = -1;
                 }
                 
-                // Случайное количество клеток от 2 до 4
-                int knockbackDistance = 2 + (std::rand() % 3); // 2, 3 или 4
+                // Случайное количество клеток от 4 до 7
+                int knockbackDistance = 4 + (std::rand() % 4); // 4, 5, 6 или 7
                 
                 // Применяем отбрасывание
                 for (int step = 0; step < knockbackDistance; ++step) {
@@ -314,8 +314,9 @@ void GameState::generateNewLevel()
                 !(bx == player.pos.x && by == player.pos.y) &&
                 !map.isExit(bx, by)) {
                 Entity bear(bx, by, SYM_BEAR, TCOD_ColorRGB{139, 69, 19}); // Коричневый цвет
-                bear.health = 8;
-                bear.maxHealth = 8;
+                // Случайное здоровье от 8 до 12
+                bear.maxHealth = 8 + (std::rand() % 5); // 8, 9, 10, 11 или 12
+                bear.health = bear.maxHealth;
                 // Случайный урон от 3 до 5
                 bear.damage = 3 + (std::rand() % 3); // 3, 4 или 5
                 enemies.push_back(bear);
