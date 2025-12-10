@@ -56,30 +56,6 @@ Graphics::Graphics(int width, int height)
 
 Graphics::~Graphics() = default;
 
-// Загружаем один пиксельный CP437 тайлсет из assets/tiles.
-// Проблема: если PNG не соответствует стандартному CP437 порядку, символы будут неправильными.
-// Решение: используем стандартный встроенный tileset libtcod или правильный маппинг.
-void Graphics::loadTileset()
-{
-    // ВАРИАНТ 1: Попытка загрузить кастомный tileset
-    // Если PNG файл правильно структурирован по CP437 (16x16 = 256 тайлов)
-    TCOD_Tileset* ts = TCOD_tileset_load("assets/tiles/terminal12x12_gs_ro.png", 12, 12, 256, nullptr);
-    
-    if (ts) {
-        tileset = std::shared_ptr<TCOD_Tileset>(ts, [](TCOD_Tileset* t) { 
-            if (t) TCOD_tileset_delete(t); 
-        });
-    } else {
-        // Если загрузка не удалась, tileset останется nullptr
-        // и libtcod использует стандартный встроенный tileset с правильным CP437 маппингом
-        tileset = nullptr;
-    }
-    
-    // ВАРИАНТ 2: Если нужен кастомный tileset, но он в другом порядке,
-    // нужно создать кастомную карту символов (charmap) для правильного маппинга
-    // Это сложнее и требует знания точного порядка символов в PNG файле
-}
-
 void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius)
 {
     // Обновляем эффект факела с пульсацией
