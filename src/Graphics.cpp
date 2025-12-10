@@ -452,6 +452,24 @@ void Graphics::drawUI(const Entity& player,
             cursorX++;
         }
     }
+    
+    // Выводим "B" с коричневым цветом напрямую
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = 'B';
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{139, 69, 19}; // Коричневый цвет
+        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+        cursorX++;
+    }
+    // Выводим " Bear " с серым цветом
+    const char* bearText = " Bear ";
+    for (int i = 0; bearText[i] != '\0' && cursorX < screenWidth; ++i) {
+        if (console.in_bounds({cursorX, legendY})) {
+            console.at({cursorX, legendY}).ch = bearText[i];
+            console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
+            console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+            cursorX++;
+        }
+    }
     // Сердечко предмета
     if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
         console.at({cursorX, legendY}).ch = SYM_ITEM;
@@ -498,8 +516,13 @@ void Graphics::drawUI(const Entity& player,
         const int enemyY = headerY + 1 + row;
         cursorX = col * columnWidth;
 
-        // Название моба его цветом
-        const std::string mobName = "Rat";
+        // Название моба его цветом (определяем по символу)
+        std::string mobName;
+        if (enemy.symbol == SYM_BEAR) {
+            mobName = "Bear";
+        } else {
+            mobName = "Rat";
+        }
         try {
             tcod::print(console, {cursorX, enemyY}, mobName.c_str(), enemy.color, std::nullopt);
         } catch (const std::exception&) {}

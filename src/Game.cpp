@@ -83,6 +83,62 @@ void GameState::processCombat()
         int dy = abs(enemies[i].pos.y - player.pos.y);
         if ((dx == 1 && dy == 0) || (dx == 0 && dy == 1)) {
             player.takeDamage(enemies[i].damage);
+            
+            // Если это медведь, отбрасываем игрока
+            if (enemies[i].symbol == SYM_BEAR) {
+                // Определяем направление от медведя к игроку (игрок отлетает в противоположную сторону)
+                int knockbackDx = 0;
+                int knockbackDy = 0;
+                
+                if (enemies[i].pos.x < player.pos.x) {
+                    // Медведь слева, игрок отлетает вправо
+                    knockbackDx = 1;
+                } else if (enemies[i].pos.x > player.pos.x) {
+                    // Медведь справа, игрок отлетает влево
+                    knockbackDx = -1;
+                }
+                
+                if (enemies[i].pos.y < player.pos.y) {
+                    // Медведь сверху, игрок отлетает вниз
+                    knockbackDy = 1;
+                } else if (enemies[i].pos.y > player.pos.y) {
+                    // Медведь снизу, игрок отлетает вверх
+                    knockbackDy = -1;
+                }
+                
+                // Случайное количество клеток от 2 до 4
+                int knockbackDistance = 2 + (std::rand() % 3); // 2, 3 или 4
+                
+                // Применяем отбрасывание
+                for (int step = 0; step < knockbackDistance; ++step) {
+                    int newX = player.pos.x + knockbackDx;
+                    int newY = player.pos.y + knockbackDy;
+                    
+                    // Проверяем границы и проходимость
+                    if (newX >= 0 && newX < Map::WIDTH &&
+                        newY >= 0 && newY < Map::HEIGHT &&
+                        map.isWalkable(newX, newY)) {
+                        // Проверяем, нет ли там врага
+                        bool canMove = true;
+                        for (const auto& e : enemies) {
+                            if (e.isAlive() && e.pos.x == newX && e.pos.y == newY) {
+                                canMove = false;
+                                break;
+                            }
+                        }
+                        
+                        if (canMove) {
+                            player.move(knockbackDx, knockbackDy);
+                        } else {
+                            // Если уперлись во врага, останавливаемся
+                            break;
+                        }
+                    } else {
+                        // Если уперлись в стену или границу, останавливаемся
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -241,6 +297,28 @@ void GameState::generateNewLevel()
                 rat.maxHealth = 3;
                 rat.damage = 1;
                 enemies.push_back(rat);
+                break;
+            }
+        }
+    }
+
+    // Создаем медведей на случайных позициях
+    const int bearsToSpawn = 2 + level / 2; // Медведей меньше, чем крыс
+    for (int i = 0; i < bearsToSpawn; ++i) {
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            int bx = std::rand() % Map::WIDTH;
+            int by = std::rand() % Map::HEIGHT;
+
+            // Ищем свободную клетку
+            if (map.getCell(bx, by) == SYM_FLOOR &&
+                !(bx == player.pos.x && by == player.pos.y) &&
+                !map.isExit(bx, by)) {
+                Entity bear(bx, by, SYM_BEAR, TCOD_ColorRGB{139, 69, 19}); // Коричневый цвет
+                bear.health = 8;
+                bear.maxHealth = 8;
+                // Случайный урон от 3 до 5
+                bear.damage = 3 + (std::rand() % 3); // 3, 4 или 5
+                enemies.push_back(bear);
                 break;
             }
         }
