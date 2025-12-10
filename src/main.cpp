@@ -8,7 +8,7 @@ int main()
 {
     // Размеры экрана
     const int screenWidth = Map::WIDTH;
-    const int screenHeight = Map::HEIGHT + 7; // +7 для UI (увеличено для Exit на новой строке)
+    const int screenHeight = Map::HEIGHT + 9; // Дополнительные строки для цветного HUD
 
     // Создаем состояние игры
     GameState game;
@@ -52,7 +52,7 @@ int main()
         graphics.drawPlayer(game.player);
 
         // Рисуем UI
-        graphics.drawUI(game.player, game.level);
+        graphics.drawUI(game.player, game.enemies, game.level, game.map);
 
         // Обновляем экран
         graphics.refreshScreen();
