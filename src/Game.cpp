@@ -105,13 +105,21 @@ void GameState::processItems()
 {
     // Проверяем, есть ли предмет на позиции игрока
     for (int i = static_cast<int>(map.items.size()) - 1; i >= 0; --i) {
-        if (map.items[i].pos.x == player.pos.x &&
-            map.items[i].pos.y == player.pos.y) {
-            // Восстанавливаем здоровье
-            player.health += map.items[i].healAmount;
-            if (player.health > player.maxHealth) {
-                player.health = player.maxHealth;
+        const Item& item = map.items[i];
+        if (item.pos.x == player.pos.x && item.pos.y == player.pos.y) {
+            // Сначала увеличиваем максимум здоровья, если предмет дает бонус.
+            if (item.maxHealthBoost > 0) {
+                player.maxHealth += item.maxHealthBoost;
             }
+
+            // Затем лечим, если предмет лечит.
+            if (item.healAmount > 0) {
+                player.health += item.healAmount;
+                if (player.health > player.maxHealth) {
+                    player.health = player.maxHealth;
+                }
+            }
+
             // Убираем предмет
             map.removeItem(i);
         }

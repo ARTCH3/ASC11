@@ -153,13 +153,22 @@ void Graphics::drawEntity(const Entity& entity)
     }
 }
 
-void Graphics::drawItem(int x, int y)
+void Graphics::drawItem(const Item& item)
 {
+    int x = item.pos.x;
+    int y = item.pos.y;
+
     if (x >= 0 && x < Map::WIDTH && y >= 0 && y < Map::HEIGHT &&
         x < screenWidth && y < screenHeight &&
         console.in_bounds({x, y})) {
-        console.at({x, y}).ch = SYM_ITEM;
-        console.at({x, y}).fg = colorItem;
+        // Для предмета повышения максимума здоровья делаем цвет зеленым,
+        // для обычного лечащего предмета используем стандартный цвет.
+        tcod::ColorRGB itemColor = (item.symbol == static_cast<char>(SYM_MAX_HP))
+            ? tcod::ColorRGB{0, 204, 0}
+            : colorItem;
+
+        console.at({x, y}).ch = item.symbol;
+        console.at({x, y}).fg = itemColor;
     }
 }
 
@@ -450,6 +459,14 @@ void Graphics::drawUI(const Entity& player,
     }
     cursorX += 1;
     safePrint(" Medkit  ", tcod::ColorRGB{180, 180, 180});
+    // Предмет для увеличения максимального здоровья
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = static_cast<char>(SYM_MAX_HP);
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{0, 204, 0}; // Зеленый цвет
+        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+        cursorX++;
+    }
+    safePrint(" MaxHP_UP  ", tcod::ColorRGB{180, 180, 180});
     if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
         console.at({cursorX, legendY}).ch = SYM_EXIT;
         console.at({cursorX, legendY}).fg = tcod::ColorRGB{200, 200, 120};
