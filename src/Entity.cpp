@@ -1,7 +1,7 @@
 #include "Entity.h"
 
 // Конструктор просто запоминает стартовые значения.
-Entity::Entity(int startX, int startY, char sym, const TCOD_ColorRGB& col)
+Entity::Entity(int startX, int startY, int sym, const TCOD_ColorRGB& col)
     : pos(startX, startY),
       symbol(sym),
       color(col),
