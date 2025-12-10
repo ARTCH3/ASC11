@@ -37,7 +37,7 @@ int main()
         // Рисуем предметы (только если они видны)
         for (const auto& item : game.map.items) {
             if (game.map.isVisible(item.pos.x, item.pos.y)) {
-                graphics.drawItem(item.pos.x, item.pos.y);
+                graphics.drawItem(item);
             }
         }
 
