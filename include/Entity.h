@@ -1,6 +1,16 @@
 #pragma once
 
+#ifndef TCOD_NO_CONSOLE
+#define TCOD_NO_CONSOLE 1
+#endif
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 26439) // подавляем анализатор для внешнего libtcod
+#endif
 #include <libtcod.hpp>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 // Символы, используемые в игре (CP437-compatible: отображаются с classic tileset).
 enum GameSymbols {

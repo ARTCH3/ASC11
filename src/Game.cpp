@@ -1,8 +1,62 @@
 #include "Game.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <ctime>
-#include <algorithm>
+
+namespace {
+// Простой helper для целых случайных чисел в диапазоне [min, max].
+int rng(int min, int max)
+{
+    return min + (std::rand() % (max - min + 1));
+}
+
+// Проверка, стоят ли клетки по соседству по стороне.
+bool isAdjacent(const Position& a, const Position& b)
+{
+    const int dx = std::abs(a.x - b.x);
+    const int dy = std::abs(a.y - b.y);
+    return (dx == 1 && dy == 0) || (dx == 0 && dy == 1);
+}
+
+// Отбрасывание игрока от медведя.
+void applyBearKnockback(GameState& state, const Entity& bear)
+{
+    const int knockbackDx = (bear.pos.x < state.player.pos.x) ? 1
+                           : (bear.pos.x > state.player.pos.x) ? -1
+                           : 0;
+    const int knockbackDy = (bear.pos.y < state.player.pos.y) ? 1
+                           : (bear.pos.y > state.player.pos.y) ? -1
+                           : 0;
+
+    if (knockbackDx == 0 && knockbackDy == 0) {
+        return;
+    }
+
+    const int knockbackDistance = rng(4, 7);
+    for (int step = 0; step < knockbackDistance; ++step) {
+        const int newX = state.player.pos.x + knockbackDx;
+        const int newY = state.player.pos.y + knockbackDy;
+
+        if (!state.map.inBounds(newX, newY) || !state.map.isWalkable(newX, newY)) {
+            break;
+        }
+
+        bool blocked = false;
+        for (const auto& e : state.enemies) {
+            if (e.isAlive() && e.pos.x == newX && e.pos.y == newY) {
+                blocked = true;
+                break;
+            }
+        }
+        if (blocked) {
+            break;
+        }
+
+        state.player.move(knockbackDx, knockbackDy);
+    }
+}
+} // namespace
 
 GameState::GameState()
     : map(),
@@ -52,8 +106,7 @@ void GameState::updateEnemies()
         int newY = enemies[i].pos.y + dy;
 
         // Проверяем, можно ли туда пойти
-        if (newX >= 0 && newX < Map::WIDTH &&
-            newY >= 0 && newY < Map::HEIGHT &&
+        if (map.inBounds(newX, newY) &&
             map.isWalkable(newX, newY) &&
             !(newX == player.pos.x && newY == player.pos.y)) {
             // Перемещаем
@@ -65,93 +118,29 @@ void GameState::updateEnemies()
 // Обработка боя
 void GameState::processCombat()
 {
-    // Проверяем столкновение игрока с врагами
-    for (size_t i = 0; i < enemies.size(); ++i) {
-        if (!enemies[i].isAlive()) {
+    for (auto& enemy : enemies) {
+        if (!enemy.isAlive()) {
             continue;
         }
 
-        // Если враг на той же клетке, что и игрок
-        if (enemies[i].pos.x == player.pos.x &&
-            enemies[i].pos.y == player.pos.y) {
-            // Игрок атакует врага
-            enemies[i].takeDamage(player.damage);
+        if (enemy.pos.x == player.pos.x && enemy.pos.y == player.pos.y) {
+            enemy.takeDamage(player.damage);
         }
 
-        // Если враг рядом с игроком (в соседней клетке), он атакует
-        int dx = abs(enemies[i].pos.x - player.pos.x);
-        int dy = abs(enemies[i].pos.y - player.pos.y);
-        if ((dx == 1 && dy == 0) || (dx == 0 && dy == 1)) {
-            player.takeDamage(enemies[i].damage);
-            
-            // Если это медведь, отбрасываем игрока
-            if (enemies[i].symbol == SYM_BEAR) {
-                // Определяем направление от медведя к игроку (игрок отлетает в противоположную сторону)
-                int knockbackDx = 0;
-                int knockbackDy = 0;
-                
-                if (enemies[i].pos.x < player.pos.x) {
-                    // Медведь слева, игрок отлетает вправо
-                    knockbackDx = 1;
-                } else if (enemies[i].pos.x > player.pos.x) {
-                    // Медведь справа, игрок отлетает влево
-                    knockbackDx = -1;
-                }
-                
-                if (enemies[i].pos.y < player.pos.y) {
-                    // Медведь сверху, игрок отлетает вниз
-                    knockbackDy = 1;
-                } else if (enemies[i].pos.y > player.pos.y) {
-                    // Медведь снизу, игрок отлетает вверх
-                    knockbackDy = -1;
-                }
-                
-                // Случайное количество клеток от 4 до 7
-                int knockbackDistance = 4 + (std::rand() % 4); // 4, 5, 6 или 7
-                
-                // Применяем отбрасывание
-                for (int step = 0; step < knockbackDistance; ++step) {
-                    int newX = player.pos.x + knockbackDx;
-                    int newY = player.pos.y + knockbackDy;
-                    
-                    // Проверяем границы и проходимость
-                    if (newX >= 0 && newX < Map::WIDTH &&
-                        newY >= 0 && newY < Map::HEIGHT &&
-                        map.isWalkable(newX, newY)) {
-                        // Проверяем, нет ли там врага
-                        bool canMove = true;
-                        for (const auto& e : enemies) {
-                            if (e.isAlive() && e.pos.x == newX && e.pos.y == newY) {
-                                canMove = false;
-                                break;
-                            }
-                        }
-                        
-                        if (canMove) {
-                            player.move(knockbackDx, knockbackDy);
-                        } else {
-                            // Если уперлись во врага, останавливаемся
-                            break;
-                        }
-                    } else {
-                        // Если уперлись в стену или границу, останавливаемся
-                        break;
-                    }
-                }
+        if (isAdjacent(enemy.pos, player.pos)) {
+            player.takeDamage(enemy.damage);
+            if (enemy.symbol == SYM_BEAR) {
+                applyBearKnockback(*this, enemy);
             }
         }
     }
 
-    // Удаляем мертвых врагов
     enemies.erase(
         std::remove_if(enemies.begin(), enemies.end(),
                        [](const Entity& e) { return !e.isAlive(); }),
-        enemies.end()
-    );
+        enemies.end());
 
-    // Проверяем, не умер ли игрок
     if (!player.isAlive()) {
-        // Вместо выхода из игры, перезапускаем её
         restartGame();
     }
 }
@@ -219,7 +208,7 @@ void handleInput(GameState& state, int key)
         dy = 1;
     }
     // Выход только по ESC
-    else if (key == TCODK_ESCAPE) {
+    else if (key == TCODK_ESCAPE || key == 27) {
         state.isRunning = false;
         return;
     }
@@ -230,8 +219,7 @@ void handleInput(GameState& state, int key)
         int newY = state.player.pos.y + dy;
 
         // Проверяем границы
-        if (newX >= 0 && newX < Map::WIDTH &&
-            newY >= 0 && newY < Map::HEIGHT) {
+        if (state.map.inBounds(newX, newY)) {
 
             // Если на новой клетке враг — атакуем его
             for (auto& e : state.enemies) {

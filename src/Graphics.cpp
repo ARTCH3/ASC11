@@ -52,6 +52,12 @@ Graphics::Graphics(int width, int height)
     if (!context) {
         throw std::runtime_error("Failed to create context");
     }
+
+    // Включаем полноэкранный режим. Масштабирование и отрисовку оставляем libtcod/SDL,
+    // чтобы клетки оставались квадратными и интерфейс выглядел так же, как в оконном режиме.
+    if (auto sdl_window = context->get_sdl_window()) {
+        SDL_SetWindowFullscreen(sdl_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    }
 }
 
 Graphics::~Graphics() = default;
@@ -389,6 +395,17 @@ void Graphics::drawUI(const Entity& player,
     for (int i = 0; fullText[i] != '\0'; ++i) {
         putChar(fullText[i]);
     }
+
+    // Разделитель |
+    putChar(' ');
+    putChar('|');
+    putChar(' ');
+
+    // Выводим "Quit: [ESC]"
+    const char* quitText = "Quit: [ESC]";
+    for (int i = 0; quitText[i] != '\0'; ++i) {
+        putChar(quitText[i]);
+    }
     
 
     // --- Линия 4: легенда с цветами ---
@@ -564,6 +581,15 @@ void Graphics::clearScreen()
 // Ждем нажатия клавиши. Возвращаем true если что-то нажали.
 bool Graphics::getInput(int& key)
 {
+    // Сначала обрабатываем событие закрытия окна (Alt+F4/крестик)
+    SDL_Event ev;
+    while (SDL_PollEvent(&ev)) {
+        if (ev.type == SDL_QUIT) {
+            key = TCODK_ESCAPE;
+            return true;
+        }
+    }
+
     TCOD_key_t k = TCOD_console_wait_for_keypress(true);
 
     // Проверяем F11 для полноэкранного режима

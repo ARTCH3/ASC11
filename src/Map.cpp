@@ -132,6 +132,11 @@ bool Map::isWalkable(int x, int y) const
     return !isWall(x, y);
 }
 
+bool Map::inBounds(int x, int y) const
+{
+    return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT;
+}
+
 // FOV с использованием TCODMap (как в samples_cpp.cpp)
 void Map::computeFOV(int playerX, int playerY, int radius, bool lightWalls)
 {

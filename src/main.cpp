@@ -6,9 +6,10 @@
 // затем запускаем основной игровой цикл.
 int main()
 {
-    // Размеры экрана
+    // Размеры окна: по ширине карты, по высоте — карта + HUD.
+    // Так мир и интерфейс заполняют всю консоль без пустых полос.
     const int screenWidth = Map::WIDTH;
-    const int screenHeight = Map::HEIGHT + 9; // Дополнительные строки для цветного HUD
+    const int screenHeight = Map::HEIGHT + 9;
 
     // Создаем состояние игры
     GameState game;
@@ -71,4 +72,21 @@ int main()
 
     return 0;
 }
+
+#ifdef _WIN32
+#include <windows.h>
+// Обертка WinMain для сборки без консольного окна (subsystem:windows)
+int WINAPI WinMain(
+    _In_ HINSTANCE hInstance,
+    _In_opt_ HINSTANCE hPrevInstance,
+    _In_ LPSTR lpCmdLine,
+    _In_ int nShowCmd)
+{
+    (void)hInstance;
+    (void)hPrevInstance;
+    (void)lpCmdLine;
+    (void)nShowCmd;
+    return main();
+}
+#endif
 
