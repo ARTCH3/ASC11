@@ -52,33 +52,15 @@ Graphics::Graphics(int width, int height)
     if (!context) {
         throw std::runtime_error("Failed to create context");
     }
+
+    // Включаем полноэкранный режим. Масштабирование и отрисовку оставляем libtcod/SDL,
+    // чтобы клетки оставались квадратными и интерфейс выглядел так же, как в оконном режиме.
+    if (auto sdl_window = context->get_sdl_window()) {
+        SDL_SetWindowFullscreen(sdl_window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    }
 }
 
 Graphics::~Graphics() = default;
-
-// Загружаем один пиксельный CP437 тайлсет из assets/tiles.
-// Проблема: если PNG не соответствует стандартному CP437 порядку, символы будут неправильными.
-// Решение: используем стандартный встроенный tileset libtcod или правильный маппинг.
-void Graphics::loadTileset()
-{
-    // ВАРИАНТ 1: Попытка загрузить кастомный tileset
-    // Если PNG файл правильно структурирован по CP437 (16x16 = 256 тайлов)
-    TCOD_Tileset* ts = TCOD_tileset_load("assets/tiles/terminal12x12_gs_ro.png", 12, 12, 256, nullptr);
-    
-    if (ts) {
-        tileset = std::shared_ptr<TCOD_Tileset>(ts, [](TCOD_Tileset* t) { 
-            if (t) TCOD_tileset_delete(t); 
-        });
-    } else {
-        // Если загрузка не удалась, tileset останется nullptr
-        // и libtcod использует стандартный встроенный tileset с правильным CP437 маппингом
-        tileset = nullptr;
-    }
-    
-    // ВАРИАНТ 2: Если нужен кастомный tileset, но он в другом порядке,
-    // нужно создать кастомную карту символов (charmap) для правильного маппинга
-    // Это сложнее и требует знания точного порядка символов в PNG файле
-}
 
 void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius)
 {
@@ -177,13 +159,22 @@ void Graphics::drawEntity(const Entity& entity)
     }
 }
 
-void Graphics::drawItem(int x, int y)
+void Graphics::drawItem(const Item& item)
 {
+    int x = item.pos.x;
+    int y = item.pos.y;
+
     if (x >= 0 && x < Map::WIDTH && y >= 0 && y < Map::HEIGHT &&
         x < screenWidth && y < screenHeight &&
         console.in_bounds({x, y})) {
-        console.at({x, y}).ch = SYM_ITEM;
-        console.at({x, y}).fg = colorItem;
+        // Для предмета повышения максимума здоровья делаем цвет зеленым,
+        // для обычного лечащего предмета используем стандартный цвет.
+        tcod::ColorRGB itemColor = (item.symbol == static_cast<char>(SYM_MAX_HP))
+            ? tcod::ColorRGB{0, 204, 0}
+            : colorItem;
+
+        console.at({x, y}).ch = item.symbol;
+        console.at({x, y}).fg = itemColor;
     }
 }
 
@@ -404,6 +395,17 @@ void Graphics::drawUI(const Entity& player,
     for (int i = 0; fullText[i] != '\0'; ++i) {
         putChar(fullText[i]);
     }
+
+    // Разделитель |
+    putChar(' ');
+    putChar('|');
+    putChar(' ');
+
+    // Выводим "Quit: [ESC]"
+    const char* quitText = "Quit: [ESC]";
+    for (int i = 0; quitText[i] != '\0'; ++i) {
+        putChar(quitText[i]);
+    }
     
 
     // --- Линия 4: легенда с цветами ---
@@ -467,6 +469,24 @@ void Graphics::drawUI(const Entity& player,
             cursorX++;
         }
     }
+    
+    // Выводим "B" с коричневым цветом напрямую
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = 'B';
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{139, 69, 19}; // Коричневый цвет
+        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+        cursorX++;
+    }
+    // Выводим " Bear " с серым цветом
+    const char* bearText = " Bear ";
+    for (int i = 0; bearText[i] != '\0' && cursorX < screenWidth; ++i) {
+        if (console.in_bounds({cursorX, legendY})) {
+            console.at({cursorX, legendY}).ch = bearText[i];
+            console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
+            console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+            cursorX++;
+        }
+    }
     // Сердечко предмета
     if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
         console.at({cursorX, legendY}).ch = SYM_ITEM;
@@ -474,6 +494,14 @@ void Graphics::drawUI(const Entity& player,
     }
     cursorX += 1;
     safePrint(" Medkit  ", tcod::ColorRGB{180, 180, 180});
+    // Предмет для увеличения максимального здоровья
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = static_cast<char>(SYM_MAX_HP);
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{0, 204, 0}; // Зеленый цвет
+        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+        cursorX++;
+    }
+    safePrint(" MaxHP_UP  ", tcod::ColorRGB{180, 180, 180});
     if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
         console.at({cursorX, legendY}).ch = SYM_EXIT;
         console.at({cursorX, legendY}).fg = tcod::ColorRGB{200, 200, 120};
@@ -505,8 +533,13 @@ void Graphics::drawUI(const Entity& player,
         const int enemyY = headerY + 1 + row;
         cursorX = col * columnWidth;
 
-        // Название моба его цветом
-        const std::string mobName = "Rat";
+        // Название моба его цветом (определяем по символу)
+        std::string mobName;
+        if (enemy.symbol == SYM_BEAR) {
+            mobName = "Bear";
+        } else {
+            mobName = "Rat";
+        }
         try {
             tcod::print(console, {cursorX, enemyY}, mobName.c_str(), enemy.color, std::nullopt);
         } catch (const std::exception&) {}
@@ -548,6 +581,15 @@ void Graphics::clearScreen()
 // Ждем нажатия клавиши. Возвращаем true если что-то нажали.
 bool Graphics::getInput(int& key)
 {
+    // Сначала обрабатываем событие закрытия окна (Alt+F4/крестик)
+    SDL_Event ev;
+    while (SDL_PollEvent(&ev)) {
+        if (ev.type == SDL_QUIT) {
+            key = TCODK_ESCAPE;
+            return true;
+        }
+    }
+
     TCOD_key_t k = TCOD_console_wait_for_keypress(true);
 
     // Проверяем F11 для полноэкранного режима

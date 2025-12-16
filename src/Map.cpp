@@ -56,14 +56,30 @@ void Map::generate()
     }
 
     // Добавим несколько предметов на случайные свободные клетки.
-    const int itemsToSpawn = 3;
-    for (int i = 0; i < itemsToSpawn; ++i) {
+    const int healItemsToSpawn = 3;
+    for (int i = 0; i < healItemsToSpawn; ++i) {
         for (int attempt = 0; attempt < 100; ++attempt) {
             int rx = std::rand() % WIDTH;
             int ry = std::rand() % HEIGHT;
 
             if (cells[ry][rx] == SYM_FLOOR) {
-                addItem(rx, ry, 5); // Восстанавливает 5 здоровья
+                addHealItem(rx, ry, 5); // Восстанавливает 5 здоровья
+                break;
+            }
+        }
+    }
+
+    // Добавим предметы, увеличивающие максимум здоровья.
+    const int maxHpItemsToSpawn = 2;
+    for (int i = 0; i < maxHpItemsToSpawn; ++i) {
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            int rx = std::rand() % WIDTH;
+            int ry = std::rand() % HEIGHT;
+
+            if (cells[ry][rx] == SYM_FLOOR) {
+                // Бонус от 1 до 5
+                int bonus = (std::rand() % 5) + 1;
+                addMaxHealthItem(rx, ry, bonus);
                 break;
             }
         }
@@ -116,6 +132,11 @@ bool Map::isWalkable(int x, int y) const
     return !isWall(x, y);
 }
 
+bool Map::inBounds(int x, int y) const
+{
+    return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT;
+}
+
 // FOV с использованием TCODMap (как в samples_cpp.cpp)
 void Map::computeFOV(int playerX, int playerY, int radius, bool lightWalls)
 {
@@ -156,10 +177,21 @@ bool Map::isExplored(int x, int y) const
     return explored[y][x];
 }
 
-void Map::addItem(int x, int y, int healAmount)
+void Map::addItem(int x, int y, int healAmount, int maxHealthBoost, char symbol)
 {
-    items.push_back(Item(x, y, healAmount));
-    cells[y][x] = SYM_ITEM;
+    items.push_back(Item(x, y, healAmount, maxHealthBoost, symbol));
+    cells[y][x] = symbol;
+}
+
+void Map::addHealItem(int x, int y, int healAmount)
+{
+    addItem(x, y, healAmount, 0, SYM_ITEM);
+}
+
+void Map::addMaxHealthItem(int x, int y, int maxHealthBoost)
+{
+    // Если в будущем нужно будет менять символ, достаточно поправить здесь
+    addItem(x, y, 0, maxHealthBoost, SYM_MAX_HP);
 }
 
 Item* Map::getItemAt(int x, int y)

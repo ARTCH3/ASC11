@@ -1,8 +1,62 @@
 #include "Game.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <ctime>
-#include <algorithm>
+
+namespace {
+// Простой helper для целых случайных чисел в диапазоне [min, max].
+int rng(int min, int max)
+{
+    return min + (std::rand() % (max - min + 1));
+}
+
+// Проверка, стоят ли клетки по соседству по стороне.
+bool isAdjacent(const Position& a, const Position& b)
+{
+    const int dx = std::abs(a.x - b.x);
+    const int dy = std::abs(a.y - b.y);
+    return (dx == 1 && dy == 0) || (dx == 0 && dy == 1);
+}
+
+// Отбрасывание игрока от медведя.
+void applyBearKnockback(GameState& state, const Entity& bear)
+{
+    const int knockbackDx = (bear.pos.x < state.player.pos.x) ? 1
+                           : (bear.pos.x > state.player.pos.x) ? -1
+                           : 0;
+    const int knockbackDy = (bear.pos.y < state.player.pos.y) ? 1
+                           : (bear.pos.y > state.player.pos.y) ? -1
+                           : 0;
+
+    if (knockbackDx == 0 && knockbackDy == 0) {
+        return;
+    }
+
+    const int knockbackDistance = rng(4, 7);
+    for (int step = 0; step < knockbackDistance; ++step) {
+        const int newX = state.player.pos.x + knockbackDx;
+        const int newY = state.player.pos.y + knockbackDy;
+
+        if (!state.map.inBounds(newX, newY) || !state.map.isWalkable(newX, newY)) {
+            break;
+        }
+
+        bool blocked = false;
+        for (const auto& e : state.enemies) {
+            if (e.isAlive() && e.pos.x == newX && e.pos.y == newY) {
+                blocked = true;
+                break;
+            }
+        }
+        if (blocked) {
+            break;
+        }
+
+        state.player.move(knockbackDx, knockbackDy);
+    }
+}
+} // namespace
 
 GameState::GameState()
     : map(),
@@ -52,8 +106,7 @@ void GameState::updateEnemies()
         int newY = enemies[i].pos.y + dy;
 
         // Проверяем, можно ли туда пойти
-        if (newX >= 0 && newX < Map::WIDTH &&
-            newY >= 0 && newY < Map::HEIGHT &&
+        if (map.inBounds(newX, newY) &&
             map.isWalkable(newX, newY) &&
             !(newX == player.pos.x && newY == player.pos.y)) {
             // Перемещаем
@@ -65,37 +118,29 @@ void GameState::updateEnemies()
 // Обработка боя
 void GameState::processCombat()
 {
-    // Проверяем столкновение игрока с врагами
-    for (size_t i = 0; i < enemies.size(); ++i) {
-        if (!enemies[i].isAlive()) {
+    for (auto& enemy : enemies) {
+        if (!enemy.isAlive()) {
             continue;
         }
 
-        // Если враг на той же клетке, что и игрок
-        if (enemies[i].pos.x == player.pos.x &&
-            enemies[i].pos.y == player.pos.y) {
-            // Игрок атакует врага
-            enemies[i].takeDamage(player.damage);
+        if (enemy.pos.x == player.pos.x && enemy.pos.y == player.pos.y) {
+            enemy.takeDamage(player.damage);
         }
 
-        // Если враг рядом с игроком (в соседней клетке), он атакует
-        int dx = abs(enemies[i].pos.x - player.pos.x);
-        int dy = abs(enemies[i].pos.y - player.pos.y);
-        if ((dx == 1 && dy == 0) || (dx == 0 && dy == 1)) {
-            player.takeDamage(enemies[i].damage);
+        if (isAdjacent(enemy.pos, player.pos)) {
+            player.takeDamage(enemy.damage);
+            if (enemy.symbol == SYM_BEAR) {
+                applyBearKnockback(*this, enemy);
+            }
         }
     }
 
-    // Удаляем мертвых врагов
     enemies.erase(
         std::remove_if(enemies.begin(), enemies.end(),
                        [](const Entity& e) { return !e.isAlive(); }),
-        enemies.end()
-    );
+        enemies.end());
 
-    // Проверяем, не умер ли игрок
     if (!player.isAlive()) {
-        // Вместо выхода из игры, перезапускаем её
         restartGame();
     }
 }
@@ -105,13 +150,21 @@ void GameState::processItems()
 {
     // Проверяем, есть ли предмет на позиции игрока
     for (int i = static_cast<int>(map.items.size()) - 1; i >= 0; --i) {
-        if (map.items[i].pos.x == player.pos.x &&
-            map.items[i].pos.y == player.pos.y) {
-            // Восстанавливаем здоровье
-            player.health += map.items[i].healAmount;
-            if (player.health > player.maxHealth) {
-                player.health = player.maxHealth;
+        const Item& item = map.items[i];
+        if (item.pos.x == player.pos.x && item.pos.y == player.pos.y) {
+            // Сначала увеличиваем максимум здоровья, если предмет дает бонус.
+            if (item.maxHealthBoost > 0) {
+                player.maxHealth += item.maxHealthBoost;
             }
+
+            // Затем лечим, если предмет лечит.
+            if (item.healAmount > 0) {
+                player.health += item.healAmount;
+                if (player.health > player.maxHealth) {
+                    player.health = player.maxHealth;
+                }
+            }
+
             // Убираем предмет
             map.removeItem(i);
         }
@@ -155,7 +208,7 @@ void handleInput(GameState& state, int key)
         dy = 1;
     }
     // Выход только по ESC
-    else if (key == TCODK_ESCAPE) {
+    else if (key == TCODK_ESCAPE || key == 27) {
         state.isRunning = false;
         return;
     }
@@ -166,8 +219,7 @@ void handleInput(GameState& state, int key)
         int newY = state.player.pos.y + dy;
 
         // Проверяем границы
-        if (newX >= 0 && newX < Map::WIDTH &&
-            newY >= 0 && newY < Map::HEIGHT) {
+        if (state.map.inBounds(newX, newY)) {
 
             // Если на новой клетке враг — атакуем его
             for (auto& e : state.enemies) {
@@ -233,6 +285,29 @@ void GameState::generateNewLevel()
                 rat.maxHealth = 3;
                 rat.damage = 1;
                 enemies.push_back(rat);
+                break;
+            }
+        }
+    }
+
+    // Создаем медведей на случайных позициях
+    const int bearsToSpawn = 2 + level / 2; // Медведей меньше, чем крыс
+    for (int i = 0; i < bearsToSpawn; ++i) {
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            int bx = std::rand() % Map::WIDTH;
+            int by = std::rand() % Map::HEIGHT;
+
+            // Ищем свободную клетку
+            if (map.getCell(bx, by) == SYM_FLOOR &&
+                !(bx == player.pos.x && by == player.pos.y) &&
+                !map.isExit(bx, by)) {
+                Entity bear(bx, by, SYM_BEAR, TCOD_ColorRGB{139, 69, 19}); // Коричневый цвет
+                // Случайное здоровье от 8 до 12
+                bear.maxHealth = 8 + (std::rand() % 5); // 8, 9, 10, 11 или 12
+                bear.health = bear.maxHealth;
+                // Случайный урон от 3 до 5
+                bear.damage = 3 + (std::rand() % 3); // 3, 4 или 5
+                enemies.push_back(bear);
                 break;
             }
         }

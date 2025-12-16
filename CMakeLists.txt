@@ -12,6 +12,7 @@ file(GLOB_RECURSE SOURCE_FILES "src/*.cpp")
 
 # 4. СОЗДАЁМ исполняемый файл (эта команда "строит" цель "Roguelike")
 add_executable(ASC11 ${SOURCE_FILES})
+set_target_properties(ASC11 PROPERTIES WIN32_EXECUTABLE TRUE)
 
 # 5. ТОЛЬКО ТЕПЕРЬ, когда цель создана, мы можем её настраивать:
 #    Подключаем папку с заголовками
@@ -28,4 +29,4 @@ find_package(libtcod CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE libtcod::libtcod)
 
 # 6. Копируем папку assets рядом с исполняемым файлом
-file(COPY assets DESTINATION ${CMAKE_BINARY_DIR})
+# file(COPY assets DESTINATION ${CMAKE_BINARY_DIR})

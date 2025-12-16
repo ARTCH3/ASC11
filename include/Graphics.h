@@ -1,11 +1,27 @@
 #pragma once
 
+#ifndef TCOD_NO_CONSOLE
+#define TCOD_NO_CONSOLE 1 // Отключаем старый C API консоли, чтобы избежать кучи "не найдено определение"
+#endif
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 26439) // функции в libtcod headers помечены как noexcept по анализатору
+#endif
 #include <libtcod.hpp>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 #include <memory>
 
 // Вперед объявляем классы, чтобы не тянуть сюда все заголовки.
 class Map;
 class Entity;
+struct Item;
+
+// Вперед объявляем классы, чтобы не тянуть сюда все заголовки.
+class Map;
+class Entity;
+struct Item;
 
 // Класс для работы с выводом через libtcod.
 // Использует TCOD_Context для окна и TCOD_Console для отрисовки.
@@ -36,7 +52,7 @@ public:
     void drawMap(const Map& map, int playerX, int playerY, int torchRadius);
     void drawEntity(const Entity& entity);
     void drawPlayer(const Entity& player); // Специальный метод для игрока с динамическим цветом
-    void drawItem(int x, int y);
+    void drawItem(const Item& item);
     void drawUI(const Entity& player,
                 const std::vector<Entity>& enemies,
                 int level,

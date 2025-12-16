@@ -1,23 +1,38 @@
 #pragma once
 
+#ifndef TCOD_NO_CONSOLE
+#define TCOD_NO_CONSOLE 1
+#endif
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 26439) // подавляем анализатор для внешнего libtcod
+#endif
 #include <libtcod.hpp>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 #include <vector>
 #include "Entity.h"
 
 // Структура для предмета на карте.
 struct Item {
     Position pos;
-    int healAmount; // Сколько здоровья восстанавливает
+    int healAmount;      // Сколько здоровья восстанавливает
+    int maxHealthBoost;  // Насколько увеличивает максимум здоровья
+    char symbol;         // Символ, который рисуем на карте
 
-    Item(int x, int y, int heal) : pos(x, y), healAmount(heal) {}
+    Item(int x, int y, int heal, int boost, char sym)
+        : pos(x, y), healAmount(heal), maxHealthBoost(boost), symbol(sym) {}
 };
 
 class Map {
 public:
     // Сделаем размеры карты доступны снаружи,
     // чтобы их могли использовать другие части кода.
-    static const int WIDTH = 50;
-    static const int HEIGHT = 20;
+    // Размеры карты 16:9, чтобы мир и интерфейс занимали весь экран без черных полос.
+    // 80x36 -> вместе с 9 строками HUD получаем консоль 80x45, тоже 16:9.
+    static const int WIDTH = 80;
+    static const int HEIGHT = 36;
 
 private:
     char cells[HEIGHT][WIDTH];
@@ -34,6 +49,7 @@ public:
     void setCell(int x, int y, char symbol);
     bool isWall(int x, int y) const;
     bool isWalkable(int x, int y) const;
+    bool inBounds(int x, int y) const; // Проверка границ карты
 
     // FOV функции с использованием TCODMap
     void computeFOV(int playerX, int playerY, int radius, bool lightWalls = true);
@@ -42,7 +58,9 @@ public:
 
     // Предметы на карте
     std::vector<Item> items;
-    void addItem(int x, int y, int healAmount);
+    void addItem(int x, int y, int healAmount, int maxHealthBoost, char symbol);
+    void addHealItem(int x, int y, int healAmount);
+    void addMaxHealthItem(int x, int y, int maxHealthBoost);
     Item* getItemAt(int x, int y);
     void removeItem(int index);
     

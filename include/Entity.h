@@ -1,6 +1,16 @@
 #pragma once
 
+#ifndef TCOD_NO_CONSOLE
+#define TCOD_NO_CONSOLE 1
+#endif
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 26439) // подавляем анализатор для внешнего libtcod
+#endif
 #include <libtcod.hpp>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 // Символы, используемые в игре (CP437-compatible: отображаются с classic tileset).
 enum GameSymbols {
@@ -8,8 +18,10 @@ enum GameSymbols {
     SYM_WALL   = '#',    // Стена (только для логики карты и выхода)
     SYM_FLOOR  = '.',    // Пол (только для логики карты, не отрисовывается)
     SYM_ENEMY  = 'r',    // Крыса
+    SYM_BEAR   = 'B',    // Медведь
     SYM_ITEM   = '$',    // Medkit отображается символом $ (CP437 код 36)
-    SYM_EXIT   = '#'     // Выход на следующий уровень (совпадает с SYM_WALL)
+    SYM_EXIT   = '#',    // Выход на следующий уровень (совпадает с SYM_WALL)
+    SYM_MAX_HP = '+'     // Новый предмет для увеличения максимального здоровья
 };
 
 // Простая структура позиции на карте.
