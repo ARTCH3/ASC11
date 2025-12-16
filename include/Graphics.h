@@ -44,7 +44,8 @@ public:
                 const std::vector<Entity>& enemies,
                 int level,
                 const Map& map,
-                bool isPlayerPoisoned);
+                bool isPlayerPoisoned,
+                bool isPlayerGhostCursed);
     void refreshScreen();
     void clearScreen();
     // Читает одну клавишу. Возвращает true если что-то нажали.

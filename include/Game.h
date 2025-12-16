@@ -19,6 +19,10 @@ struct GameState {
     bool isPlayerPoisoned = false;   // Отравлен ли сейчас игрок
     int poisonTurnsRemaining = 0;    // Сколько ходов еще длится яд
 
+    // Состояние "проклятия призрака" — когда игрок не видит своё здоровье.
+    bool isPlayerGhostCursed = false;   // Действует ли сейчас эффект призрака
+    int ghostCurseTurnsRemaining = 0;   // Сколько ходов ещё скрыт HP
+
     GameState(); // Конструктор задает стартовые значения.
     void updateEnemies(); // Обновление позиций врагов
     void processCombat(); // Обработка боя
@@ -31,6 +35,11 @@ struct GameState {
     void updatePoison();
     // Применяем яд к игроку: задаем новое время действия, не суммируя эффект.
     void applyPoisonToPlayer(int minTurns, int maxTurns);
+
+    // Обновление эффекта призрака: просто тикает таймер, урона не наносит.
+    void updateGhostCurse();
+    // Вешаем на игрока эффект призрака (скрытие HP) на случайное число ходов.
+    void applyGhostCurseToPlayer(int minTurns, int maxTurns);
 };
 
 // Обработка ввода и простейшая логика перемещения игрока.

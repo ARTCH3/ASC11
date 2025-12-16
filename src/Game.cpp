@@ -48,6 +48,17 @@ void GameState::updateEnemies()
                 dx = 0;
                 dy = 0;
             }
+        } else if (enemies[i].symbol == SYM_GHOST) {
+            // Призрак двигается свободно по диагонали и игнорирует стены.
+            // Он всегда старается приблизиться к игроку на 1 клетку (как "король" в шахматах).
+            int diffX = player.pos.x - enemies[i].pos.x;
+            int diffY = player.pos.y - enemies[i].pos.y;
+
+            if (diffX > 0) dx = 1;
+            else if (diffX < 0) dx = -1;
+
+            if (diffY > 0) dy = 1;
+            else if (diffY < 0) dy = -1;
         } else {
             // Простой AI: двигаемся к игроку
             if (enemies[i].pos.x < player.pos.x) {
@@ -76,10 +87,17 @@ void GameState::updateEnemies()
         // Проверяем, можно ли туда пойти
         if (newX >= 0 && newX < Map::WIDTH &&
             newY >= 0 && newY < Map::HEIGHT &&
-            map.isWalkable(newX, newY) &&
             !(newX == player.pos.x && newY == player.pos.y)) {
-            // Перемещаем
-            enemies[i].move(dx, dy);
+
+            // Обычные враги уважают стены, призрак — нет.
+            bool canMoveThroughCell = true;
+            if (enemies[i].symbol != SYM_GHOST) {
+                canMoveThroughCell = map.isWalkable(newX, newY);
+            }
+
+            if (canMoveThroughCell) {
+                enemies[i].move(dx, dy);
+            }
         }
     }
 }
@@ -115,6 +133,9 @@ void GameState::processCombat()
         if (enemies[i].symbol == SYM_SNAKE) {
             // Любая соседняя клетка (8 направлений), кроме самой клетки игрока.
             isAdjacent = (dx <= 1 && dy <= 1 && (dx + dy) > 0);
+        } else if (enemies[i].symbol == SYM_GHOST) {
+            // Призрак тоже атакует с любой соседней клетки (8 направлений).
+            isAdjacent = (dx <= 1 && dy <= 1 && (dx + dy) > 0);
         } else {
             // Как раньше: только по кресту.
             isAdjacent = ((dx == 1 && dy == 0) || (dx == 0 && dy == 1));
@@ -129,6 +150,19 @@ void GameState::processCombat()
 
                 // Каждый новый укус не накапливает яд, а просто обновляет его длительность.
                 applyPoisonToPlayer(5, 10);
+            } else if (enemies[i].symbol == SYM_GHOST) {
+                // Призрак "прицепляется" к игроку:
+                // наносит примерно 1% от максимального HP единоразово
+                // и прячет информацию о здоровье на несколько ходов.
+                int ghostDamage = std::max(1, player.maxHealth / 100);
+                player.takeDamage(ghostDamage);
+
+                // Каждый новый контакт просто обновляет длительность эффекта.
+                applyGhostCurseToPlayer(8, 12);
+
+                // После успешной атаки и наложения эффекта призрак "рассеивается":
+                // он больше не существует на карте.
+                enemies[i].health = 0;
             } else {
                 // Обычная атака
                 player.takeDamage(enemies[i].damage);
@@ -250,6 +284,43 @@ void GameState::applyPoisonToPlayer(int minTurns, int maxTurns)
     poisonTurnsRemaining = duration;
 }
 
+// Обновление эффекта "проклятия призрака" — он только скрывает HP,
+// урона сам по себе не наносит.
+void GameState::updateGhostCurse()
+{
+    if (!isPlayerGhostCursed) {
+        return;
+    }
+
+    if (ghostCurseTurnsRemaining <= 0) {
+        isPlayerGhostCursed = false;
+        ghostCurseTurnsRemaining = 0;
+        return;
+    }
+
+    // Каждый ход игрока уменьшаем таймер.
+    ghostCurseTurnsRemaining--;
+
+    if (ghostCurseTurnsRemaining <= 0) {
+        isPlayerGhostCursed = false;
+        ghostCurseTurnsRemaining = 0;
+    }
+}
+
+// Вешаем на игрока эффект призрака на случайное количество ходов.
+void GameState::applyGhostCurseToPlayer(int minTurns, int maxTurns)
+{
+    if (maxTurns < minTurns) {
+        maxTurns = minTurns;
+    }
+
+    int range = maxTurns - minTurns + 1;
+    int duration = minTurns + (range > 0 ? std::rand() % range : 0);
+
+    isPlayerGhostCursed = true;
+    ghostCurseTurnsRemaining = duration;
+}
+
 // Обработка предметов
 void GameState::processItems()
 {
@@ -364,6 +435,9 @@ void handleInput(GameState& state, int key)
     // Обновляем эффект отравления после хода (яд тикает по ходам игрока).
     state.updatePoison();
 
+    // Обновляем эффект призрака (просто тикает таймер хода игрока).
+    state.updateGhostCurse();
+
     // Обновляем FOV с учетом стен
     state.map.computeFOV(state.player.pos.x, state.player.pos.y, state.torchRadius, true);
 }
@@ -452,6 +526,29 @@ void GameState::generateNewLevel()
         }
     }
 
+    // Создаем призраков на случайных позициях
+    const int ghostsToSpawn = 1 + level / 2; // Немного, но они опасные
+    for (int i = 0; i < ghostsToSpawn; ++i) {
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            int gx = std::rand() % Map::WIDTH;
+            int gy = std::rand() % Map::HEIGHT;
+
+            // Ищем свободную клетку пола (как для обычных врагов)
+            if (map.getCell(gx, gy) == SYM_FLOOR &&
+                !(gx == player.pos.x && gy == player.pos.y) &&
+                !map.isExit(gx, gy)) {
+                // Призрак — серый полупрозрачный враг
+                Entity ghost(gx, gy, SYM_GHOST, TCOD_ColorRGB{170, 170, 170});
+                ghost.maxHealth = 5;
+                ghost.health = ghost.maxHealth;
+                // Урон хранить тоже будем, но основной урон — процентный, как в описании.
+                ghost.damage = 1;
+                enemies.push_back(ghost);
+                break;
+            }
+        }
+    }
+
     // Инициализируем FOV
     map.computeFOV(player.pos.x, player.pos.y, torchRadius, true);
 }
@@ -477,6 +574,10 @@ void GameState::restartGame()
     // чтобы он не "переезжал" в новую игру после смерти игрока.
     isPlayerPoisoned = false;
     poisonTurnsRemaining = 0;
+
+    // Сбрасываем эффект призрака — после смерти начинаем "чисто".
+    isPlayerGhostCursed = false;
+    ghostCurseTurnsRemaining = 0;
 
     // Восстанавливаем здоровье игрока
     player.health = player.maxHealth;

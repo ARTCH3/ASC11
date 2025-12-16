@@ -254,7 +254,8 @@ void Graphics::drawUI(const Entity& player,
                       const std::vector<Entity>& enemies,
                       int level,
                       const Map& map,
-                      bool isPlayerPoisoned)
+                      bool isPlayerPoisoned,
+                      bool isPlayerGhostCursed)
 {
     // Рисуем UI сразу под картой (используем первую доступную строку)
     int uiY = Map::HEIGHT;
@@ -310,7 +311,12 @@ void Graphics::drawUI(const Entity& player,
     for (int i = 0; i < barWidth; ++i) {
         const bool isFilled = i < filled;
         tcod::ColorRGB c = tcod::ColorRGB{60, 60, 60}; // цвет для пустых (темно-серый)
-        if (isFilled) {
+
+        if (isPlayerGhostCursed) {
+            // Эффект призрака: вся полоска здоровья становится однотонно-серой,
+            // чтобы игрок не мог оценить реальный запас HP по цвету.
+            c = tcod::ColorRGB{80, 80, 80};
+        } else if (isFilled) {
             if (isPlayerPoisoned) {
                 // При отравлении все квадратики HP временно становятся зелёными,
                 // но не одинаковыми: оттенок зависит от текущего уровня здоровья.
@@ -341,7 +347,12 @@ void Graphics::drawUI(const Entity& player,
     }
 
     // Цифры справа от полосы
-    snprintf(buffer, sizeof(buffer), " %d/%d", player.health, player.maxHealth);
+    if (isPlayerGhostCursed) {
+        // Эффект призрака: игрок видит только вопросительные знаки вместо точных чисел.
+        std::snprintf(buffer, sizeof(buffer), " ??/??");
+    } else {
+        std::snprintf(buffer, sizeof(buffer), " %d/%d", player.health, player.maxHealth);
+    }
     const int hpTextX = barX + barWidth;
     try {
         tcod::print(console,
@@ -537,7 +548,16 @@ void Graphics::drawUI(const Entity& player,
         console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
         cursorX++;
     }
-    safePrint(" Snake", tcod::ColorRGB{180, 180, 180});
+    safePrint(" Snake ", tcod::ColorRGB{180, 180, 180});
+
+    // Легенда для призрака: "G Ghost"
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = 'G';
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{170, 170, 170}; // Серый цвет для призрака
+        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+        cursorX++;
+    }
+    safePrint(" Ghost", tcod::ColorRGB{180, 180, 180});
 
     // --- Линии 5+: список видимых врагов с их HP ---
     const int headerY = uiY + 4;
@@ -568,6 +588,8 @@ void Graphics::drawUI(const Entity& player,
             mobName = "Bear";
         } else if (enemy.symbol == SYM_SNAKE) {
             mobName = "Snake";
+        } else if (enemy.symbol == SYM_GHOST) {
+            mobName = "Ghost";
         } else {
             mobName = "Rat";
         }
