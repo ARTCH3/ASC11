@@ -41,7 +41,8 @@ public:
     void drawUI(const Entity& player,
                 const std::vector<Entity>& enemies,
                 int level,
-                const Map& map);
+                const Map& map,
+                int shieldTurns);
     void refreshScreen();
     void clearScreen();
     // Читает одну клавишу. Возвращает true если что-то нажали.

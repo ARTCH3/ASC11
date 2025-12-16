@@ -191,9 +191,9 @@ void GameState::processItems()
                 }
             }
 
-            // Предмет-щит 'O' даёт защиту от откидывания (5 ходов).
+            // Предмет-щит 'O' даёт защиту от откидывания (30 ходов).
             if (item.symbol == SYM_SHIELD) {
-                shieldTurns = 5;
+                shieldTurns = 30;
             }
 
             // Убираем предмет

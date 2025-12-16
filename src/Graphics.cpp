@@ -247,7 +247,8 @@ static tcod::ColorRGB lerpColor(const tcod::ColorRGB& a, const tcod::ColorRGB& b
 void Graphics::drawUI(const Entity& player,
                       const std::vector<Entity>& enemies,
                       int level,
-                      const Map& map)
+                      const Map& map,
+                      int shieldTurns)
 {
     // Рисуем UI сразу под картой (используем первую доступную строку)
     int uiY = Map::HEIGHT;
@@ -351,20 +352,29 @@ void Graphics::drawUI(const Entity& player,
         tcod::print(console, {0, uiY + 2}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
     } catch (const std::exception&) {}
 
-    // --- Линия 3: управление ---
-    // Выводим всю строку управления напрямую через console.at для гарантированного отображения
+    // --- Линия 3: управление с переносом ---
     int controlX = 0;
-    const int controlY = uiY + 3;
+    int controlY = uiY + 3;
     const tcod::ColorRGB controlColor{200, 200, 200};
-    
-    // Функция для вывода символа
+
+    auto nextControlLine = [&]() {
+        controlY++;
+        controlX = 0;
+    };
+
+    // Функция для вывода символа с переносом при переполнении строки
     auto putChar = [&](char ch) {
-        if (controlX < screenWidth && console.in_bounds({controlX, controlY})) {
+        if (controlY >= screenHeight) return;
+        if (controlX >= screenWidth) {
+            nextControlLine();
+            if (controlY >= screenHeight) return;
+        }
+        if (console.in_bounds({controlX, controlY})) {
             console.at({controlX, controlY}).ch = ch;
             console.at({controlX, controlY}).fg = controlColor;
             console.at({controlX, controlY}).bg = tcod::ColorRGB{0, 0, 0};
-            controlX++;
         }
+        controlX++;
     };
     
     // Выводим "> Move: [WASD]"
@@ -396,10 +406,23 @@ void Graphics::drawUI(const Entity& player,
     for (int i = 0; fullText[i] != '\0'; ++i) {
         putChar(fullText[i]);
     }
+
+    // Показ оставшихся ходов щита на следующей строке
+    if (shieldTurns > 0) {
+        nextControlLine();
+        const char* shieldLabel = "Shield:";
+        for (int i = 0; shieldLabel[i] != '\0'; ++i) putChar(shieldLabel[i]);
+        char shieldBuf[32];
+        snprintf(shieldBuf, sizeof(shieldBuf), "%d", shieldTurns);
+        for (int i = 0; shieldBuf[i] != '\0'; ++i) {
+            putChar(shieldBuf[i]);
+        }
+    }
     
 
     // --- Линия 4+: легенда с переносом ---
-    int legendY = uiY + 4;
+    // Если щит выведен на отдельной строке, сдвигаем легенду на строку ниже
+    int legendY = uiY + ((shieldTurns > 0) ? 5 : 4);
     int legendX = 0;
 
     auto nextLegendLine = [&]() {
@@ -452,7 +475,7 @@ void Graphics::drawUI(const Entity& player,
     printLegendEntry(static_cast<char>(SYM_ITEM), "Medkit", tcod::ColorRGB{255, 180, 120}, legendLabelColor);
     printLegendEntry(static_cast<char>(SYM_MAX_HP), "MaxHP_UP", tcod::ColorRGB{0, 204, 0}, legendLabelColor);
     printLegendEntry(static_cast<char>(SYM_GHOST_ITEM), "Ghost", tcod::ColorRGB{80, 80, 80}, legendLabelColor);
-    printLegendEntry(static_cast<char>(SYM_SHIELD), "Shield5", tcod::ColorRGB{120, 255, 255}, legendLabelColor);
+    printLegendEntry(static_cast<char>(SYM_SHIELD), "Shield", tcod::ColorRGB{120, 255, 255}, legendLabelColor);
     printLegendEntry(SYM_EXIT, "Stairs", tcod::ColorRGB{200, 200, 120}, legendLabelColor);
 
     // --- Линии после легенды: список видимых врагов с их HP ---
