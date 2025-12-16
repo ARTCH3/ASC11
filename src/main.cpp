@@ -52,7 +52,14 @@ int main()
         graphics.drawPlayer(game.player);
 
         // Рисуем UI
-        graphics.drawUI(game.player, game.enemies, game.level, game.map, game.shieldTurns);
+        graphics.drawUI(game.player,
+                        game.enemies,
+                        game.level,
+                        game.map,
+                        game.shieldTurns,
+                        game.questActive,
+                        game.questKills,
+                        game.questTarget);
 
         // Обновляем экран
         graphics.refreshScreen();

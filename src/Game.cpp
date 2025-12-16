@@ -10,7 +10,11 @@ GameState::GameState()
       isRunning(true),
       torchRadius(8), // Радиус факела
       level(1),       // Начинаем с уровня 1
-      shieldTurns(0)  // Эффект щита неактивен
+      shieldTurns(0), // Эффект щита неактивен
+      visionTurns(0), // Эффект полной подсветки неактивен
+      questActive(false),
+      questTarget(0),
+      questKills(0)
 {
     // Инициализируем генератор случайных чисел один раз.
     std::srand(static_cast<unsigned>(std::time(nullptr)));
@@ -76,7 +80,11 @@ void GameState::processCombat()
         if (enemies[i].pos.x == player.pos.x &&
             enemies[i].pos.y == player.pos.y) {
             // Игрок атакует врага
+            bool wasAlive = enemies[i].isAlive();
             enemies[i].takeDamage(player.damage);
+            if (questActive && wasAlive && !enemies[i].isAlive()) {
+                questKills++;
+            }
         }
 
         // Если враг рядом с игроком (в соседней клетке), он атакует
@@ -157,6 +165,10 @@ void GameState::processCombat()
 
     // Проверяем, не умер ли игрок
     if (!player.isAlive()) {
+        // Завершаем квест и обнуляем состояние
+        questActive = false;
+        questKills = 0;
+        questTarget = 0;
         // Вместо выхода из игры, перезапускаем её
         restartGame();
     }
@@ -194,6 +206,13 @@ void GameState::processItems()
             // Предмет-щит 'O' даёт защиту от откидывания (30 ходов).
             if (item.symbol == SYM_SHIELD) {
                 shieldTurns = 30;
+            }
+
+            // Квестовый предмет '?' запускает задание на убийство N монстров.
+            if (item.symbol == SYM_QUEST && !questActive) {
+                questActive = true;
+                questKills = 0;
+                questTarget = 5 + (std::rand() % 6); // от 5 до 10
             }
 
             // Убираем предмет
@@ -277,8 +296,17 @@ void handleInput(GameState& state, int key)
     }
 
     // Обрабатываем бой и предметы
+    int killsBefore = state.questKills;
     state.processCombat();
     state.processItems();
+    // Проверяем выполнение квеста после возможных убийств
+    if (state.questActive && state.questKills >= state.questTarget) {
+        state.questActive = false;
+        state.questKills = 0;
+        state.questTarget = 0;
+        // Активируем эффект полной подсветки на следующий ход
+        state.visionTurns = 1;
+    }
 
     // Обновляем врагов
     state.updateEnemies();
@@ -286,8 +314,16 @@ void handleInput(GameState& state, int key)
     // Обрабатываем бой еще раз (на случай, если враг переместился на игрока)
     state.processCombat();
 
-    // Обновляем FOV с учетом стен
-    state.map.computeFOV(state.player.pos.x, state.player.pos.y, state.torchRadius, true);
+    // Обновляем FOV
+    if (state.visionTurns > 0) {
+        // Полная подсветка карты: игнорируем обычный FOV
+        state.map.revealAll();
+        // Эффект действует только до следующего хода
+        state.visionTurns--;
+    } else {
+        // Обычный FOV с учетом стен
+        state.map.computeFOV(state.player.pos.x, state.player.pos.y, state.torchRadius, true);
+    }
 }
 
 // Генерация нового уровня
@@ -400,6 +436,27 @@ void GameState::generateNewLevel()
         }
     }
 
+    // Спавним один квестовый предмет '?' (запускает убийство монстров)
+    for (int attempt = 0; attempt < 200; ++attempt) {
+        int qx = std::rand() % Map::WIDTH;
+        int qy = std::rand() % Map::HEIGHT;
+        bool occupiedByEnemy = false;
+        for (const auto& e : enemies) {
+            if (e.isAlive() && e.pos.x == qx && e.pos.y == qy) {
+                occupiedByEnemy = true;
+                break;
+            }
+        }
+        if (occupiedByEnemy) continue;
+        if (map.getCell(qx, qy) == SYM_FLOOR &&
+            !(qx == player.pos.x && qy == player.pos.y) &&
+            !map.isExit(qx, qy) &&
+            map.getItemAt(qx, qy) == nullptr) {
+            map.addQuestItem(qx, qy);
+            break;
+        }
+    }
+
     // Инициализируем FOV
     map.computeFOV(player.pos.x, player.pos.y, torchRadius, true);
 }
@@ -421,9 +478,11 @@ void GameState::restartGame()
     // Сбрасываем уровень на 1
     level = 1;
     
-    // Восстанавливаем здоровье игрока
+    // Сбросим максимальное здоровье и щит
+    player.maxHealth = 20;
     player.health = player.maxHealth;
-    
+    shieldTurns = 0;
+    visionTurns = 0;
     // Генерируем новый уровень (это также очистит карту и врагов)
     generateNewLevel();
 }

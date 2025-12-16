@@ -163,7 +163,9 @@ void Graphics::drawItem(const Item& item)
         console.in_bounds({x, y})) {
         // Цвет предмета зависит от типа:
         // + : увеличение максимального HP (зеленый)
-        // . : "прозрачный" предмет (более темный серо-синий)
+        // . : "прозрачный" предмет (более темный серый)
+        // O : щит
+        // ? : квестовый предмет
         // $ : обычный аптечный предмет
         tcod::ColorRGB itemColor = colorItem;
         if (item.symbol == static_cast<char>(SYM_MAX_HP)) {
@@ -172,6 +174,8 @@ void Graphics::drawItem(const Item& item)
             itemColor = tcod::ColorRGB{40, 40, 40};
         } else if (item.symbol == static_cast<char>(SYM_SHIELD)) {
             itemColor = tcod::ColorRGB{120, 255, 255};
+        } else if (item.symbol == static_cast<char>(SYM_QUEST)) {
+            itemColor = tcod::ColorRGB{255, 255, 255};
         }
 
         console.at({x, y}).ch = item.symbol;
@@ -248,7 +252,10 @@ void Graphics::drawUI(const Entity& player,
                       const std::vector<Entity>& enemies,
                       int level,
                       const Map& map,
-                      int shieldTurns)
+                      int shieldTurns,
+                      bool questActive,
+                      int questKills,
+                      int questTarget)
 {
     // Рисуем UI сразу под картой (используем первую доступную строку)
     int uiY = Map::HEIGHT;
@@ -341,7 +348,21 @@ void Graphics::drawUI(const Entity& player,
         }
     }
 
-    // --- Линия 2: уровень и позиция компактно ---
+    // --- Линия 2: квест или уровень/позиция ---
+    int infoLineY = uiY + 2;
+    if (questActive && questTarget > 0) {
+        // Квестовая строка: "Квест убей N монстров"
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "Квест убей %d монстров",
+                 questTarget);
+        try {
+            tcod::print(console, {0, infoLineY}, buffer, tcod::ColorRGB{220, 220, 220}, std::nullopt);
+        } catch (const std::exception&) {}
+        infoLineY++; // Следующая строка для уровня
+    }
+
+    // Строка уровня и позиции
     snprintf(buffer,
              sizeof(buffer),
              "# Level: %s | Pos %d,%d",
@@ -349,12 +370,12 @@ void Graphics::drawUI(const Entity& player,
              player.pos.x,
              player.pos.y);
     try {
-        tcod::print(console, {0, uiY + 2}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
+        tcod::print(console, {0, infoLineY}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
     } catch (const std::exception&) {}
 
     // --- Линия 3: управление с переносом ---
     int controlX = 0;
-    int controlY = uiY + 3;
+    int controlY = infoLineY + 1;
     const tcod::ColorRGB controlColor{200, 200, 200};
 
     auto nextControlLine = [&]() {
@@ -407,7 +428,14 @@ void Graphics::drawUI(const Entity& player,
         putChar(fullText[i]);
     }
 
-    // Показ оставшихся ходов щита на следующей строке
+    // Показ счётчика квеста и/или оставшихся ходов щита на следующих строках
+    if (questActive && questTarget > 0) {
+        nextControlLine();
+        snprintf(buffer, sizeof(buffer), "Kill %d/%d", questKills, questTarget);
+        for (int i = 0; buffer[i] != '\0'; ++i) {
+            putChar(buffer[i]);
+        }
+    }
     if (shieldTurns > 0) {
         nextControlLine();
         const char* shieldLabel = "Shield:";
@@ -421,8 +449,8 @@ void Graphics::drawUI(const Entity& player,
     
 
     // --- Линия 4+: легенда с переносом ---
-    // Если щит выведен на отдельной строке, сдвигаем легенду на строку ниже
-    int legendY = uiY + ((shieldTurns > 0) ? 5 : 4);
+    // Легенда начинается после последней строки панели управления
+    int legendY = controlY + 2;
     int legendX = 0;
 
     auto nextLegendLine = [&]() {
@@ -476,6 +504,7 @@ void Graphics::drawUI(const Entity& player,
     printLegendEntry(static_cast<char>(SYM_MAX_HP), "MaxHP_UP", tcod::ColorRGB{0, 204, 0}, legendLabelColor);
     printLegendEntry(static_cast<char>(SYM_GHOST_ITEM), "Ghost", tcod::ColorRGB{80, 80, 80}, legendLabelColor);
     printLegendEntry(static_cast<char>(SYM_SHIELD), "Shield", tcod::ColorRGB{120, 255, 255}, legendLabelColor);
+    printLegendEntry(static_cast<char>(SYM_QUEST), "Quest", tcod::ColorRGB{255, 255, 255}, legendLabelColor);
     printLegendEntry(SYM_EXIT, "Stairs", tcod::ColorRGB{200, 200, 120}, legendLabelColor);
 
     // --- Линии после легенды: список видимых врагов с их HP ---

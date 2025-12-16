@@ -14,6 +14,10 @@ struct GameState {
     int torchRadius; // Радиус факела для FOV
     int level;       // Текущий уровень (начинается с 1)
     int shieldTurns; // Количество ходов с эффектом щита
+    int visionTurns; // Количество ходов с полной подсветкой карты
+    bool questActive; // Активен ли квест на убийство монстров
+    int questTarget;  // Сколько монстров нужно убить
+    int questKills;   // Сколько монстров уже убито в квесте
 
     GameState(); // Конструктор задает стартовые значения.
     void updateEnemies(); // Обновление позиций врагов

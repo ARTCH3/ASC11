@@ -42,7 +42,10 @@ public:
                 const std::vector<Entity>& enemies,
                 int level,
                 const Map& map,
-                int shieldTurns);
+                int shieldTurns,
+                bool questActive,
+                int questKills,
+                int questTarget);
     void refreshScreen();
     void clearScreen();
     // Читает одну клавишу. Возвращает true если что-то нажали.
