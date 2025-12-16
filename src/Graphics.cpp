@@ -501,7 +501,7 @@ void Graphics::drawUI(const Entity& player,
         console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
         cursorX++;
     }
-    safePrint(" MaxHP_UP  ", tcod::ColorRGB{180, 180, 180});
+    safePrint(" MaxHP  ", tcod::ColorRGB{180, 180, 180});
     if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
         console.at({cursorX, legendY}).ch = SYM_EXIT;
         console.at({cursorX, legendY}).fg = tcod::ColorRGB{200, 200, 120};
