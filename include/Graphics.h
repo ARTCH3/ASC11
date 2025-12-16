@@ -55,7 +55,11 @@ public:
                 int level,
                 const Map& map,
                 bool isPlayerPoisoned,
-                bool isPlayerGhostCursed);
+                bool isPlayerGhostCursed,
+                int shieldTurns,
+                bool questActive,
+                int questKills,
+                int questTarget);
     void refreshScreen();
     void clearScreen();
     // Читает одну клавишу. Возвращает true если что-то нажали.

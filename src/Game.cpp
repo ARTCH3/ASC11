@@ -61,9 +61,15 @@ void applyBearKnockback(GameState& state, const Entity& bear)
 GameState::GameState()
     : map(),
       player(5, 5, SYM_PLAYER, TCOD_ColorRGB{100, 200, 255}),
+      enemies(),
       isRunning(true),
       torchRadius(8), // Радиус факела
-      level(1)        // Начинаем с уровня 1
+      level(1),       // Начинаем с уровня 1
+      shieldTurns(0), // Эффект щита неактивен
+      visionTurns(0), // Эффект полной подсветки неактивен
+      questActive(false),
+      questTarget(0),
+      questKills(0)
 {
     // Инициализируем генератор случайных чисел один раз.
     std::srand(static_cast<unsigned>(std::time(nullptr)));
@@ -216,10 +222,15 @@ void GameState::processCombat()
             enemy.pos.y == player.pos.y) {
             // Игрок атакует врага.
             // Змея умирает от одного удара, остальные враги получают обычный урон.
+            bool wasAlive = enemy.isAlive();
             if (enemy.symbol == SYM_SNAKE) {
                 enemy.health = 0;
             } else {
                 enemy.takeDamage(player.damage);
+            }
+            // Отслеживаем убийства для квеста
+            if (questActive && wasAlive && !enemy.isAlive()) {
+                questKills++;
             }
         }
 
@@ -312,7 +323,12 @@ void GameState::processCombat()
                 // Случайное количество клеток от 4 до 7
                 int knockbackDistance = 4 + (std::rand() % 4); // 4, 5, 6 или 7
                 
-                // Применяем отбрасывание
+                // Если есть эффект щита, отбрасывание не действует
+                if (shieldTurns > 0) {
+                    // Эффект щита даст защиту и уменьшится после любого хода
+                    continue;
+                }
+                // Применяем отбрасывание обычным образом
                 for (int step = 0; step < knockbackDistance; ++step) {
                     int newX = player.pos.x + knockbackDx;
                     int newY = player.pos.y + knockbackDy;
@@ -354,6 +370,11 @@ void GameState::processCombat()
 
     // Проверяем, не умер ли игрок
     if (!player.isAlive()) {
+        // Завершаем квест и обнуляем состояние
+        questActive = false;
+        questKills = 0;
+        questTarget = 0;
+        // Вместо выхода из игры, перезапускаем её
         restartGame();
     }
 }
@@ -565,6 +586,27 @@ void GameState::processItems()
                 }
             }
 
+            // Прозрачный предмет '.' наносит 15% от максимального здоровья.
+            if (item.symbol == SYM_GHOST_ITEM) {
+                int damage = std::max(1, player.maxHealth * 15 / 100);
+                player.health -= damage;
+                if (player.health < 0) {
+                    player.health = 0;
+                }
+            }
+
+            // Предмет-щит 'O' даёт защиту от откидывания (30 ходов).
+            if (item.symbol == SYM_SHIELD) {
+                shieldTurns = 30;
+            }
+
+            // Квестовый предмет '?' запускает задание на убийство N монстров.
+            if (item.symbol == SYM_QUEST && !questActive) {
+                questActive = true;
+                questKills = 0;
+                questTarget = 5 + (std::rand() % 6); // от 5 до 10
+            }
+
             // Убираем предмет
             map.removeItem(i);
         }
@@ -661,6 +703,10 @@ void handleInput(GameState& state, int key)
     if (dx != 0 || dy != 0) {
         int newX = state.player.pos.x + dx;
         int newY = state.player.pos.y + dy;
+        // Если действует щит — уменьшаем количество ходов
+        if (state.shieldTurns > 0) {
+            state.shieldTurns--;
+        }
 
         // Проверяем границы
         if (state.map.inBounds(newX, newY)) {
@@ -729,8 +775,17 @@ void handleInput(GameState& state, int key)
     }
 
     // Обрабатываем бой и предметы
+    int killsBefore = state.questKills;
     state.processCombat();
     state.processItems();
+    // Проверяем выполнение квеста после возможных убийств
+    if (state.questActive && state.questKills >= state.questTarget) {
+        state.questActive = false;
+        state.questKills = 0;
+        state.questTarget = 0;
+        // Активируем эффект полной подсветки на следующий ход
+        state.visionTurns = 1;
+    }
 
     // Обновляем врагов
     state.updateEnemies();
@@ -747,8 +802,16 @@ void handleInput(GameState& state, int key)
     // Обновляем эффект краба (инвертированное управление).
     state.updateCrabInversion();
 
-    // Обновляем FOV с учетом стен
-    state.map.computeFOV(state.player.pos.x, state.player.pos.y, state.torchRadius, true);
+    // Обновляем FOV
+    if (state.visionTurns > 0) {
+        // Полная подсветка карты: игнорируем обычный FOV
+        state.map.revealAll();
+        // Эффект действует только до следующего хода
+        state.visionTurns--;
+    } else {
+        // Обычный FOV с учетом стен
+        state.map.computeFOV(state.player.pos.x, state.player.pos.y, state.torchRadius, true);
+    }
 }
 
 // Генерация нового уровня
@@ -883,6 +946,77 @@ void GameState::generateNewLevel()
         }
     }
 
+    // Спавним призрачные предметы '.' в случайных местах (не больше 5 за карту)
+    const int ghostToSpawn = 1 + (std::rand() % 5); // от 1 до 5 штук
+    for (int i = 0; i < ghostToSpawn; ++i) {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int gx = std::rand() % Map::WIDTH;
+            int gy = std::rand() % Map::HEIGHT;
+
+            // Свободная клетка: пол, не игрок, не выход, нет врага и предмета
+            bool occupiedByEnemy = false;
+            for (const auto& e : enemies) {
+                if (e.isAlive() && e.pos.x == gx && e.pos.y == gy) {
+                    occupiedByEnemy = true;
+                    break;
+                }
+            }
+            if (occupiedByEnemy) continue;
+
+            if (map.getCell(gx, gy) == SYM_FLOOR &&
+                !(gx == player.pos.x && gy == player.pos.y) &&
+                !map.isExit(gx, gy) &&
+                map.getItemAt(gx, gy) == nullptr) {
+                map.addGhostItem(gx, gy);
+                break;
+            }
+        }
+    }
+
+    // Спавним предмет-щиты 'O' (до 3 на карту)
+    const int shieldsToSpawn = 3;
+    for (int shield = 0; shield < shieldsToSpawn; ++shield) {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int sx = std::rand() % Map::WIDTH;
+            int sy = std::rand() % Map::HEIGHT;
+            bool occupiedByEnemy = false;
+            for (const auto& e : enemies) {
+                if (e.isAlive() && e.pos.x == sx && e.pos.y == sy) {
+                    occupiedByEnemy = true;
+                    break;
+                }
+            }
+            if (occupiedByEnemy) continue;
+            if (map.getCell(sx, sy) == SYM_FLOOR &&
+                !(sx == player.pos.x && sy == player.pos.y) &&
+                !map.isExit(sx, sy) &&
+                map.getItemAt(sx, sy) == nullptr) {
+                map.addShieldItem(sx, sy);
+                break;
+            }
+        }
+    }
+
+    // Спавним один квестовый предмет '?' (запускает убийство монстров)
+    for (int attempt = 0; attempt < 200; ++attempt) {
+        int qx = std::rand() % Map::WIDTH;
+        int qy = std::rand() % Map::HEIGHT;
+        bool occupiedByEnemy = false;
+        for (const auto& e : enemies) {
+            if (e.isAlive() && e.pos.x == qx && e.pos.y == qy) {
+                occupiedByEnemy = true;
+                break;
+            }
+        }
+        if (occupiedByEnemy) continue;
+        if (map.getCell(qx, qy) == SYM_FLOOR &&
+            !(qx == player.pos.x && qy == player.pos.y) &&
+            !map.isExit(qx, qy) &&
+            map.getItemAt(qx, qy) == nullptr) {
+            map.addQuestItem(qx, qy);
+            break;
+        }
+    }
     // Инициализируем FOV
     map.computeFOV(player.pos.x, player.pos.y, torchRadius, true);
 }
@@ -917,9 +1051,11 @@ void GameState::restartGame()
     isPlayerControlsInverted = false;
     crabInversionTurnsRemaining = 0;
 
-    // Восстанавливаем здоровье игрока
+    // Сбрасываем максимальное здоровье и щит
+    player.maxHealth = 20;
     player.health = player.maxHealth;
-    
+    shieldTurns = 0;
+    visionTurns = 0;
     // Генерируем новый уровень (это также очистит карту и врагов)
     generateNewLevel();
 }

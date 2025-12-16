@@ -4,6 +4,8 @@
 #include "Entity.h"
 #include <vector>
 
+// Все поля GameState объявлены ниже, включая shieldTurns, visionTurns, questActive и т.д.
+
 // Главное состояние игры.
 // Внутри храним карту, игрока, врагов и флаг, идет ли игра.
 struct GameState {
@@ -13,6 +15,11 @@ struct GameState {
     bool isRunning;
     int torchRadius; // Радиус факела для FOV
     int level;       // Текущий уровень (начинается с 1)
+    int shieldTurns; // Количество ходов с эффектом щита
+    int visionTurns; // Количество ходов с полной подсветкой карты
+    bool questActive; // Активен ли квест на убийство монстров
+    int questTarget;  // Сколько монстров нужно убить
+    int questKills;   // Сколько монстров уже убито в квесте
 
     // Состояние отравления игрока.
     // Мы специально храним его в GameState, чтобы не усложнять класс Entity.

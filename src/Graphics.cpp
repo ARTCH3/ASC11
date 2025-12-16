@@ -171,11 +171,22 @@ void Graphics::drawItem(const Item& item)
     if (x >= 0 && x < Map::WIDTH && y >= 0 && y < Map::HEIGHT &&
         x < screenWidth && y < screenHeight &&
         console.in_bounds({x, y})) {
-        // Для предмета повышения максимума здоровья делаем цвет зеленым,
-        // для обычного лечащего предмета используем стандартный цвет.
-        tcod::ColorRGB itemColor = (item.symbol == static_cast<char>(SYM_MAX_HP))
-            ? tcod::ColorRGB{0, 204, 0}
-            : colorItem;
+        // Цвет предмета зависит от типа:
+        // + : увеличение максимального HP (зеленый)
+        // . : "прозрачный" предмет (более темный серый)
+        // O : щит
+        // ? : квестовый предмет
+        // $ : обычный аптечный предмет
+        tcod::ColorRGB itemColor = colorItem;
+        if (item.symbol == static_cast<char>(SYM_MAX_HP)) {
+            itemColor = tcod::ColorRGB{0, 204, 0};
+        } else if (item.symbol == static_cast<char>(SYM_GHOST_ITEM)) {
+            itemColor = tcod::ColorRGB{40, 40, 40};
+        } else if (item.symbol == static_cast<char>(SYM_SHIELD)) {
+            itemColor = tcod::ColorRGB{120, 255, 255};
+        } else if (item.symbol == static_cast<char>(SYM_QUEST)) {
+            itemColor = tcod::ColorRGB{255, 255, 255};
+        }
 
         console.at({x, y}).ch = item.symbol;
         console.at({x, y}).fg = itemColor;
@@ -261,8 +272,34 @@ void Graphics::drawUI(const Entity& player,
                       int level,
                       const Map& map,
                       bool isPlayerPoisoned,
-                      bool isPlayerGhostCursed)
+                      bool isPlayerGhostCursed,
+                      int shieldTurns,
+                      bool questActive,
+                      int questKills,
+                      int questTarget)
 {
+    char buffer[256];
+
+    // --- Надпись квеста в верхней части карты (y=0) ---
+    if (questActive && questTarget > 0) {
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "Квест убей %d монстров",
+                 questTarget);
+        // Выводим поверх карты с полупрозрачным фоном для читаемости
+        for (int x = 0; x < screenWidth && x < static_cast<int>(strlen(buffer)); ++x) {
+            if (console.in_bounds({x, 0})) {
+                console.at({x, 0}).ch = (x < static_cast<int>(strlen(buffer))) ? buffer[x] : ' ';
+                console.at({x, 0}).fg = tcod::ColorRGB{220, 220, 220};
+                console.at({x, 0}).bg = tcod::ColorRGB{20, 20, 20}; // Темный фон для читаемости
+            }
+        }
+        // Используем tcod::print для более надежного вывода
+        try {
+            tcod::print(console, {0, 0}, buffer, tcod::ColorRGB{220, 220, 220}, tcod::ColorRGB{20, 20, 20});
+        } catch (const std::exception&) {}
+    }
+
     // Рисуем UI сразу под картой (используем первую доступную строку)
     int uiY = Map::HEIGHT;
 
@@ -273,8 +310,6 @@ void Graphics::drawUI(const Entity& player,
             console.at({x, y}).bg = tcod::ColorRGB{0, 0, 0};
         }
     }
-
-    char buffer[256];
 
     // --- Линия 1: здоровье игрока — полоса, затем цифры справа ---
     const float healthPercent = std::clamp(static_cast<float>(player.health) / static_cast<float>(player.maxHealth), 0.0f, 1.0f);
@@ -381,7 +416,9 @@ void Graphics::drawUI(const Entity& player,
         }
     }
 
-    // --- Линия 2: уровень и позиция компактно ---
+    // --- Линия 2: уровень и позиция ---
+    int infoLineY = uiY + 2;
+    // Строка уровня и позиции
     snprintf(buffer,
              sizeof(buffer),
              "# Level: %s | Pos %d,%d",
@@ -389,23 +426,32 @@ void Graphics::drawUI(const Entity& player,
              player.pos.x,
              player.pos.y);
     try {
-        tcod::print(console, {0, uiY + 2}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
+        tcod::print(console, {0, infoLineY}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
     } catch (const std::exception&) {}
 
-    // --- Линия 3: управление ---
-    // Выводим всю строку управления напрямую через console.at для гарантированного отображения
+    // --- Линия 3: управление с переносом ---
     int controlX = 0;
-    const int controlY = uiY + 3;
+    int controlY = infoLineY + 1;
     const tcod::ColorRGB controlColor{200, 200, 200};
-    
-    // Функция для вывода символа
+
+    auto nextControlLine = [&]() {
+        controlY++;
+        controlX = 0;
+    };
+
+    // Функция для вывода символа с переносом при переполнении строки
     auto putChar = [&](char ch) {
-        if (controlX < screenWidth && console.in_bounds({controlX, controlY})) {
+        if (controlY >= screenHeight) return;
+        if (controlX >= screenWidth) {
+            nextControlLine();
+            if (controlY >= screenHeight) return;
+        }
+        if (console.in_bounds({controlX, controlY})) {
             console.at({controlX, controlY}).ch = ch;
             console.at({controlX, controlY}).fg = controlColor;
             console.at({controlX, controlY}).bg = tcod::ColorRGB{0, 0, 0};
-            controlX++;
         }
+        controlX++;
     };
     
     // Выводим "> Move: [WASD]" или "> Move: [????]" при эффекте краба.
@@ -457,152 +503,110 @@ void Graphics::drawUI(const Entity& player,
     for (int i = 0; quitText[i] != '\0'; ++i) {
         putChar(quitText[i]);
     }
-    
 
-    // --- Линия 4: легенда с цветами ---
-    int legendY = uiY + 4;
-    int cursorX = 0;
-    auto safePrint = [&](const std::string& text, tcod::ColorRGB color) {
-        if (cursorX < screenWidth) {
-            tcod::print(console, {cursorX, legendY}, text.c_str(), color, std::nullopt);
-            cursorX += static_cast<int>(text.size());
+    // Показ счётчика квеста и таймера щита в одной строке (с переносом при нехватке места)
+    auto printText = [&](const char* txt) {
+        for (int i = 0; txt[i] != '\0'; ++i) {
+            putChar(txt[i]);
         }
     };
 
-    // Выводим "Legend" посимвольно
-    const char* legendText = "Legend:";
-    for (int i = 0; legendText[i] != '\0' && cursorX < screenWidth; ++i) {
-        if (console.in_bounds({cursorX, legendY})) {
-            console.at({cursorX, legendY}).ch = legendText[i];
-            console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
-            console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-            cursorX++;
+    // Проверяем, влезет ли текст перед выводом
+    auto checkAndPrint = [&](const char* txt) -> bool {
+        int textLen = static_cast<int>(strlen(txt));
+        // Если текст не влезает на текущую строку, переносим на новую
+        if (controlX + textLen > screenWidth && controlX > 0) {
+            nextControlLine();
+            if (controlY >= screenHeight) return false;
+        }
+        printText(txt);
+        return true;
+    };
+
+    bool printedSomething = false;
+    if (questActive && questTarget > 0) {
+        snprintf(buffer, sizeof(buffer), " | Kill %d/%d", questKills, questTarget);
+        if (checkAndPrint(buffer)) {
+            printedSomething = true;
         }
     }
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = ' '; // Пробел
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
+    if (shieldTurns > 0) {
+        snprintf(buffer, sizeof(buffer), printedSomething ? " | Shield:%d" : "Shield:%d", shieldTurns);
+        checkAndPrint(buffer);
     }
-    
-    // Выводим "@ Hero " напрямую
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = '@';
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{100, 200, 255};
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    const char* heroText = " Hero ";
-    for (int i = 0; heroText[i] != '\0' && cursorX < screenWidth; ++i) {
-        if (console.in_bounds({cursorX, legendY})) {
-            console.at({cursorX, legendY}).ch = heroText[i];
-            console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
-            console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-            cursorX++;
+
+    // --- Линия 4+: легенда с переносом ---
+    // Легенда начинается сразу после последней строки панели управления (без пустой строки)
+    int legendY = controlY + 1;
+    int legendX = 0;
+
+    auto nextLegendLine = [&]() {
+        legendY++;
+        legendX = 0;
+    };
+
+    auto putLegendChar = [&](char ch, const tcod::ColorRGB& color) {
+        if (legendX >= screenWidth) {
+            nextLegendLine();
         }
-    }
-    
-    // Выводим "r" с красным цветом напрямую
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = 'r';
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{255, 50, 50}; // Красный цвет
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    // Выводим " Rat " с серым цветом
-    const char* ratText = " Rat ";
-    for (int i = 0; ratText[i] != '\0' && cursorX < screenWidth; ++i) {
-        if (console.in_bounds({cursorX, legendY})) {
-            console.at({cursorX, legendY}).ch = ratText[i];
-            console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
-            console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-            cursorX++;
+        if (legendY >= screenHeight) return;
+        if (console.in_bounds({legendX, legendY})) {
+            console.at({legendX, legendY}).ch = ch;
+            console.at({legendX, legendY}).fg = color;
+            console.at({legendX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
         }
-    }
-    
-    // Выводим "B" с коричневым цветом напрямую
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = 'B';
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{139, 69, 19}; // Коричневый цвет
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    // Выводим " Bear " с серым цветом
-    const char* bearText = " Bear ";
-    for (int i = 0; bearText[i] != '\0' && cursorX < screenWidth; ++i) {
-        if (console.in_bounds({cursorX, legendY})) {
-            console.at({cursorX, legendY}).ch = bearText[i];
-            console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
-            console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-            cursorX++;
+        legendX++;
+    };
+
+    auto printLegendText = [&](const std::string& text, const tcod::ColorRGB& color) {
+        for (char ch : text) {
+            putLegendChar(ch, color);
         }
-    }
-    // Сердечко предмета
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = SYM_ITEM;
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{255, 180, 120};
-    }
-    cursorX += 1;
-    safePrint(" Medkit  ", tcod::ColorRGB{180, 180, 180});
-    // Предмет для увеличения максимального здоровья
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = static_cast<char>(SYM_MAX_HP);
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{0, 204, 0}; // Зеленый цвет
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    safePrint(" MaxHP  ", tcod::ColorRGB{180, 180, 180});
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = SYM_EXIT;
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{200, 200, 120};
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    safePrint(" Stairs", tcod::ColorRGB{200, 200, 120});
+    };
 
-    // Место для легенды змеи: "S Snake"
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = ' ';
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = 'S';
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{60, 130, 60}; // Болотно-зелёный для змеи
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    safePrint(" Snake ", tcod::ColorRGB{180, 180, 180});
+    auto printLegendEntry = [&](char symbol, const std::string& text, const tcod::ColorRGB& symColor, const tcod::ColorRGB& textColor) {
+        const int need = 1 + 1 + static_cast<int>(text.size()); // символ + пробел + текст
+        if (legendX + need > screenWidth) {
+            nextLegendLine();
+        }
+        if (legendY >= screenHeight) return;
 
-    // Легенда для призрака: "G Ghost"
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = 'G';
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{170, 170, 170}; // Серый цвет для призрака
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    safePrint(" Ghost ", tcod::ColorRGB{180, 180, 180});
+        putLegendChar(symbol, symColor);
+        putLegendChar(' ', textColor);
+        for (char ch : text) {
+            putLegendChar(ch, textColor);
+        }
+        // Пробел-разделитель после элемента
+        putLegendChar(' ', textColor);
+    };
 
-    // Легенда для краба: "C Crab"
-    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
-        console.at({cursorX, legendY}).ch = 'C';
-        console.at({cursorX, legendY}).fg = tcod::ColorRGB{255, 140, 0}; // Ярко-оранжевый краб
-        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        cursorX++;
-    }
-    safePrint(" Crab", tcod::ColorRGB{180, 180, 180});
+    const tcod::ColorRGB legendLabelColor{180, 180, 180};
+    printLegendText("Legend: ", legendLabelColor);
 
-    // --- Линии 5+: список видимых врагов с их HP ---
-    const int headerY = uiY + 4;
+    // Элементы легенды
+    printLegendEntry('@', "Hero", tcod::ColorRGB{100, 200, 255}, legendLabelColor);
+    printLegendEntry('r', "Rat", tcod::ColorRGB{255, 50, 50}, legendLabelColor);
+    printLegendEntry('B', "Bear", tcod::ColorRGB{139, 69, 19}, legendLabelColor);
+    printLegendEntry('S', "Snake", tcod::ColorRGB{60, 130, 60}, legendLabelColor);
+    printLegendEntry('g', "Ghost", tcod::ColorRGB{170, 170, 170}, legendLabelColor);
+    printLegendEntry('C', "Crab", tcod::ColorRGB{255, 140, 0}, legendLabelColor);
+    printLegendEntry(static_cast<char>(SYM_ITEM), "Medkit", tcod::ColorRGB{255, 180, 120}, legendLabelColor);
+    printLegendEntry(static_cast<char>(SYM_MAX_HP), "MaxHP_UP", tcod::ColorRGB{0, 204, 0}, legendLabelColor);
+    printLegendEntry(static_cast<char>(SYM_GHOST_ITEM), "Ghost", tcod::ColorRGB{80, 80, 80}, legendLabelColor);
+    printLegendEntry(static_cast<char>(SYM_SHIELD), "Shield", tcod::ColorRGB{120, 255, 255}, legendLabelColor);
+    printLegendEntry(static_cast<char>(SYM_QUEST), "Quest", tcod::ColorRGB{255, 255, 255}, legendLabelColor);
+    printLegendEntry(SYM_EXIT, "Stairs", tcod::ColorRGB{200, 200, 120}, legendLabelColor);
+
+    // --- Линии после легенды: список видимых врагов с их HP ---
+    const int enemiesStartY = legendY + 1;
     // Убрали заголовок "Enemies in sight:" - сразу выводим список врагов
 
     const int columnWidth = 14; // компактнее, без полосок баров
     const int maxColumns = std::max(1, screenWidth / columnWidth);
-    const int maxRows = std::max(0, screenHeight - (headerY + 1));
+    const int maxRows = std::max(0, screenHeight - enemiesStartY);
 
     int slot = 0;
+    int cursorX = 0;
     for (const auto& enemy : enemies) {
         if (!map.isVisible(enemy.pos.x, enemy.pos.y) || !enemy.isAlive()) {
             continue;
@@ -614,7 +618,7 @@ void Graphics::drawUI(const Entity& player,
         }
         const int col = slot % maxColumns;
 
-        const int enemyY = headerY + 1 + row;
+        const int enemyY = enemiesStartY + row;
         cursorX = col * columnWidth;
 
         // Название моба его цветом (определяем по символу)

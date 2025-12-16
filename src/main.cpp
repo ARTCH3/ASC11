@@ -63,7 +63,11 @@ int main()
                         game.level,
                         game.map,
                         game.isPlayerPoisoned,
-                        game.isPlayerGhostCursed);
+                        game.isPlayerGhostCursed,
+                        game.shieldTurns,
+                        game.questActive,
+                        game.questKills,
+                        game.questTarget);
 
         // Обновляем экран
         graphics.refreshScreen();

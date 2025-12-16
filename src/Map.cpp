@@ -161,6 +161,16 @@ void Map::computeFOV(int playerX, int playerY, int radius, bool lightWalls)
     }
 }
 
+void Map::revealAll()
+{
+    for (int y = 0; y < HEIGHT; ++y) {
+        for (int x = 0; x < WIDTH; ++x) {
+            visible[y][x] = true;
+            explored[y][x] = true;
+        }
+    }
+}
+
 bool Map::isVisible(int x, int y) const
 {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
@@ -192,6 +202,24 @@ void Map::addMaxHealthItem(int x, int y, int maxHealthBoost)
 {
     // Если в будущем нужно будет менять символ, достаточно поправить здесь
     addItem(x, y, 0, maxHealthBoost, SYM_MAX_HP);
+}
+
+void Map::addGhostItem(int x, int y)
+{
+    // Прозрачный предмет '.' ничего не лечит и не бустит HP
+    addItem(x, y, 0, 0, SYM_GHOST_ITEM);
+}
+
+void Map::addShieldItem(int x, int y)
+{
+    // Щит: не лечит и не увеличивает максимум HP
+    addItem(x, y, 0, 0, SYM_SHIELD);
+}
+
+void Map::addQuestItem(int x, int y)
+{
+    // Квестовый предмет '?'
+    addItem(x, y, 0, 0, SYM_QUEST);
 }
 
 Item* Map::getItemAt(int x, int y)

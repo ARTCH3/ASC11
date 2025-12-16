@@ -53,6 +53,7 @@ public:
 
     // FOV функции с использованием TCODMap
     void computeFOV(int playerX, int playerY, int radius, bool lightWalls = true);
+    void revealAll(); // Сделать всю карту видимой и исследованной
     bool isVisible(int x, int y) const;
     bool isExplored(int x, int y) const;
 
@@ -61,6 +62,9 @@ public:
     void addItem(int x, int y, int healAmount, int maxHealthBoost, char symbol);
     void addHealItem(int x, int y, int healAmount);
     void addMaxHealthItem(int x, int y, int maxHealthBoost);
+    void addGhostItem(int x, int y);  // Прозрачный предмет '.'
+    void addShieldItem(int x, int y); // Щит "O"
+    void addQuestItem(int x, int y);  // Квестовый предмет '?'
     Item* getItemAt(int x, int y);
     void removeItem(int index);
     
