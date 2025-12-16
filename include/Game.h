@@ -23,6 +23,10 @@ struct GameState {
     bool isPlayerGhostCursed = false;   // Действует ли сейчас эффект призрака
     int ghostCurseTurnsRemaining = 0;   // Сколько ходов ещё скрыт HP
 
+    // Состояние эффекта краба: инвертированное управление.
+    bool isPlayerControlsInverted = false; // Инвертировано ли сейчас управление (эффект краба)
+    int crabInversionTurnsRemaining = 0;   // Сколько ходов ещё действует инверсия
+
     GameState(); // Конструктор задает стартовые значения.
     void updateEnemies(); // Обновление позиций врагов
     void processCombat(); // Обработка боя
@@ -40,6 +44,11 @@ struct GameState {
     void updateGhostCurse();
     // Вешаем на игрока эффект призрака (скрытие HP) на случайное число ходов.
     void applyGhostCurseToPlayer(int minTurns, int maxTurns);
+
+    // Обновление эффекта краба (инвертированное управление).
+    void updateCrabInversion();
+    // Вешаем на игрока эффект краба: инвертируем управление на случайное число ходов.
+    void applyCrabInversionToPlayer(int minTurns, int maxTurns);
 };
 
 // Обработка ввода и простейшая логика перемещения игрока.

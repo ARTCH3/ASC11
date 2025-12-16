@@ -59,6 +59,53 @@ void GameState::updateEnemies()
 
             if (diffY > 0) dy = 1;
             else if (diffY < 0) dy = -1;
+        } else if (enemies[i].symbol == SYM_CRAB) {
+            // Краб: ходит только по вертикали/горизонтали.
+            // В обычном состоянии старается приблизиться к игроку.
+            // В состоянии "паники" после отцепления — наоборот убегает от него.
+            Entity& crab = enemies[i];
+
+            if (crab.crabAttachedToPlayer) {
+                // Прицепленный краб не двигается по карте.
+                dx = 0;
+                dy = 0;
+            } else {
+                int diffX = player.pos.x - crab.pos.x;
+                int diffY = player.pos.y - crab.pos.y;
+
+                if (crab.crabAttachmentCooldown > 0) {
+                    // Краб в панике убегает от игрока:
+                    // выбираем направление, противоположное игроку.
+                    if (diffX > 0) dx = -1;
+                    else if (diffX < 0) dx = 1;
+
+                    if (diffY > 0) dy = -1;
+                    else if (diffY < 0) dy = 1;
+
+                    // Каждый ход уменьшаем таймер "паники".
+                    crab.crabAttachmentCooldown--;
+                    if (crab.crabAttachmentCooldown <= 0) {
+                        crab.crabAttachmentCooldown = 0;
+                        // Как только откат закончился — возвращаем яркий цвет.
+                        crab.color = TCOD_ColorRGB{255, 140, 0}; // ярко-оранжевый
+                    }
+                } else {
+                    // Обычное состояние: краб хочет приблизиться к игроку.
+                    if (diffX > 0) dx = 1;
+                    else if (diffX < 0) dx = -1;
+
+                    if (diffY > 0) dy = 1;
+                    else if (diffY < 0) dy = -1;
+                }
+
+                // Краб может ходить только по вертикали или горизонтали,
+                // поэтому случайно выбираем одно из направлений и обнуляем второе.
+                if (std::rand() % 2 == 0) {
+                    dy = 0;
+                } else {
+                    dx = 0;
+                }
+            }
         } else {
             // Простой AI: двигаемся к игроку
             if (enemies[i].pos.x < player.pos.x) {
@@ -163,6 +210,25 @@ void GameState::processCombat()
                 // После успешной атаки и наложения эффекта призрак "рассеивается":
                 // он больше не существует на карте.
                 enemies[i].health = 0;
+            } else if (enemies[i].symbol == SYM_CRAB) {
+                // Особое поведение краба.
+                // Если управление ещё НЕ инвертировано и краб не в откате,
+                // то при приближении он "прицепляется" к игроку.
+                if (!isPlayerControlsInverted && enemies[i].crabAttachmentCooldown == 0) {
+                    // Вешаем эффект инверсии управления.
+                    applyCrabInversionToPlayer(8, 15);
+
+                    // Помечаем, что именно этот краб прицепился к игроку.
+                    enemies[i].crabAttachedToPlayer = true;
+                    // Краб "садится" на игрока: его координаты становятся координатами игрока.
+                    enemies[i].pos.x = player.pos.x;
+                    enemies[i].pos.y = player.pos.y;
+                } else {
+                    // Если эффект уже висит (или краб недавно отцепился),
+                    // он не может прицепиться и просто наносит небольшой урон (~1% HP).
+                    int crabDamage = std::max(1, player.maxHealth / 100);
+                    player.takeDamage(crabDamage);
+                }
             } else {
                 // Обычная атака
                 player.takeDamage(enemies[i].damage);
@@ -321,6 +387,112 @@ void GameState::applyGhostCurseToPlayer(int minTurns, int maxTurns)
     ghostCurseTurnsRemaining = duration;
 }
 
+// Обновление эффекта краба — он инвертирует управление игрока
+// на ограниченное количество ходов, а затем "отцепляется",
+// нанося дополнительный урон и убегая от игрока.
+void GameState::updateCrabInversion()
+{
+    if (!isPlayerControlsInverted) {
+        return;
+    }
+
+    if (crabInversionTurnsRemaining > 0) {
+        crabInversionTurnsRemaining--;
+    }
+
+    if (crabInversionTurnsRemaining > 0) {
+        return;
+    }
+
+    // Эффект закончился: сбрасываем флаг.
+    isPlayerControlsInverted = false;
+    crabInversionTurnsRemaining = 0;
+
+    // Ищем краба, который был прицеплен к игроку.
+    // Краб при отцеплении наносит ~3% урона от максимального здоровья,
+    // отскакивает на две клетки от игрока и впадает в "панический побег".
+    for (auto& enemy : enemies) {
+        if (!enemy.isAlive()) {
+            continue;
+        }
+        if (enemy.symbol != SYM_CRAB) {
+            continue;
+        }
+        if (!enemy.crabAttachedToPlayer) {
+            continue;
+        }
+
+        // Наносим урон при отцеплении.
+        int detachDamage = std::max(1, player.maxHealth * 3 / 100);
+        player.takeDamage(detachDamage);
+
+        // Переводим краба в состояние "убегает от игрока".
+        enemy.crabAttachedToPlayer = false;
+        // Краб некоторое время не может снова прицепляться.
+        int minCooldown = 15;
+        int maxCooldown = 35;
+        if (maxCooldown < minCooldown) {
+            maxCooldown = minCooldown;
+        }
+        int range = maxCooldown - minCooldown + 1;
+        enemy.crabAttachmentCooldown = minCooldown + (range > 0 ? std::rand() % range : 0);
+
+        // Отскакиваем краба на две клетки от игрока.
+        // Выбираем одно из четырёх направлений, в котором получится поставить краба.
+        const int dirs[4][2] = {
+            { 1,  0},  // вправо
+            {-1,  0},  // влево
+            { 0,  1},  // вниз
+            { 0, -1}   // вверх
+        };
+        for (int attempt = 0; attempt < 4; ++attempt) {
+            int idx = std::rand() % 4;
+            int dx = dirs[idx][0];
+            int dy = dirs[idx][1];
+
+            int targetX = player.pos.x + dx * 2;
+            int targetY = player.pos.y + dy * 2;
+
+            if (targetX < 0 || targetX >= Map::WIDTH ||
+                targetY < 0 || targetY >= Map::HEIGHT) {
+                continue;
+            }
+            if (!map.isWalkable(targetX, targetY)) {
+                continue;
+            }
+
+            enemy.pos.x = targetX;
+            enemy.pos.y = targetY;
+            break;
+        }
+
+        // Делаем цвет краба более тусклым, чтобы можно было отличить
+        // испуганного краба, который пока не может прицепляться.
+        enemy.color = TCOD_ColorRGB{200, 120, 40}; // тускло-оранжевый
+
+        break;
+    }
+
+    // Если урон от отцепления убил игрока — перезапускаем игру.
+    if (!player.isAlive()) {
+        restartGame();
+    }
+}
+
+// Вешаем на игрока эффект краба: инвертируем управление на случайное число ходов.
+void GameState::applyCrabInversionToPlayer(int minTurns, int maxTurns)
+{
+    if (maxTurns < minTurns) {
+        maxTurns = minTurns;
+    }
+
+    int range = maxTurns - minTurns + 1;
+    int duration = minTurns + (range > 0 ? std::rand() % range : 0);
+
+    isPlayerControlsInverted = true;
+    crabInversionTurnsRemaining = duration;
+}
+
 // Обработка предметов
 void GameState::processItems()
 {
@@ -389,6 +561,50 @@ void handleInput(GameState& state, int key)
         return;
     }
 
+    // Если на игроке висит эффект краба — инвертируем направление движения.
+    if (state.isPlayerControlsInverted) {
+        dx = -dx;
+        dy = -dy;
+    }
+
+    // Если активен эффект краба и нажата не WASD/WASD/QEZC — ручное снятие краба
+    if (state.isPlayerControlsInverted) {
+        // Комплект допустимых клавиш (верхний + нижний регистр)
+        if (!(key == 'w' || key == 'a' || key == 's' || key == 'd' ||
+              key == 'q' || key == 'e' || key == 'z' || key == 'c' ||
+              key == 'W' || key == 'A' || key == 'S' || key == 'D' ||
+              key == 'Q' || key == 'E' || key == 'Z' || key == 'C')) {
+            // Найти прицепленного краба
+            for (auto& crab : state.enemies) {
+                if (crab.symbol == SYM_CRAB && crab.crabAttachedToPlayer && crab.isAlive()) {
+                    crab.crabAttachedToPlayer = false;
+                    // выставить откат
+                    int minCooldown = 15;
+                    int maxCooldown = 35;
+                    int range = maxCooldown - minCooldown + 1;
+                    crab.crabAttachmentCooldown = minCooldown + (range > 0 ? std::rand() % range : 0);
+                    crab.color = TCOD_ColorRGB{200, 120, 40};
+                    // Краб появляется на 1 клетку рядом с игроком (ищем первую свободную)
+                    const int dirs[4][2] = { {1,0}, {-1,0}, {0,1}, {0,-1} };
+                    for (int t = 0; t < 4; ++t) {
+                        int dxTry = dirs[t][0];
+                        int dyTry = dirs[t][1];
+                        int nx = state.player.pos.x + dxTry;
+                        int ny = state.player.pos.y + dyTry;
+                        if (nx >= 0 && nx < Map::WIDTH && ny >= 0 && ny < Map::HEIGHT && state.map.isWalkable(nx, ny)) {
+                            crab.pos.x = nx;
+                            crab.pos.y = ny;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            // Снимаем эффект краба с игрока
+            state.isPlayerControlsInverted = false;
+            state.crabInversionTurnsRemaining = 0;
+        }
+    }
     // Перемещаем игрока
     if (dx != 0 || dy != 0) {
         int newX = state.player.pos.x + dx;
@@ -399,10 +615,40 @@ void handleInput(GameState& state, int key)
             newY >= 0 && newY < Map::HEIGHT) {
 
             // Если на новой клетке враг — атакуем его.
-            // Змея умирает с одного удара, другие враги получают обычный урон.
+            // Змея и краб умирают с одного удара (краб может иметь особое поведение,
+            // если он был прицеплен к игроку).
             for (auto& e : state.enemies) {
                 if (e.pos.x == newX && e.pos.y == newY && e.isAlive()) {
                     if (e.symbol == SYM_SNAKE) {
+                        e.health = 0;
+                    } else if (e.symbol == SYM_CRAB && e.crabAttachedToPlayer) {
+                        // Игрок "наступает" на краба, который был прицеплен.
+                        // Эффект инверсии снимается, краб отлетает на 2 клетки
+                        // дальше по направлению шага и начинает убегать.
+                        state.isPlayerControlsInverted = false;
+                        state.crabInversionTurnsRemaining = 0;
+
+                        e.crabAttachedToPlayer = false;
+
+                        // Задаем откат, в течение которого краб не сможет снова прицепляться.
+                        int minCooldown = 15;
+                        int maxCooldown = 35;
+                        if (maxCooldown < minCooldown) {
+                            maxCooldown = minCooldown;
+                        }
+                        int range = maxCooldown - minCooldown + 1;
+                        e.crabAttachmentCooldown = minCooldown + (range > 0 ? std::rand() % range : 0);
+
+                        // Переносим краба на 2 клетки дальше от игрока по направлению шага.
+                        e.pos.x = newX + dx;
+                        e.pos.y = newY + dy;
+                        e.pos.x += dx;
+                        e.pos.y += dy;
+
+                        // Делаем цвет тусклым — такой краб пока не может цепляться.
+                        e.color = TCOD_ColorRGB{200, 120, 40};
+                    } else if (e.symbol == SYM_CRAB) {
+                        // Обычный краб без особого состояния умирает с одного удара.
                         e.health = 0;
                     } else {
                         e.takeDamage(state.player.damage);
@@ -413,6 +659,15 @@ void handleInput(GameState& state, int key)
             // Перемещаемся, если клетка не стена или это выход
             if (state.map.isWalkable(newX, newY) || state.map.isExit(newX, newY)) {
                 state.player.move(dx, dy);
+
+                // Если на игроке "сидит" краб, он должен оставаться на тех же координатах,
+                // что и игрок, пока не отцепится.
+                for (auto& e : state.enemies) {
+                    if (e.symbol == SYM_CRAB && e.crabAttachedToPlayer && e.isAlive()) {
+                        e.pos.x = state.player.pos.x;
+                        e.pos.y = state.player.pos.y;
+                    }
+                }
                 
                 // Проверяем переход на следующий уровень
                 if (state.checkExit()) {
@@ -438,6 +693,9 @@ void handleInput(GameState& state, int key)
     // Обновляем эффект призрака (просто тикает таймер хода игрока).
     state.updateGhostCurse();
 
+    // Обновляем эффект краба (инвертированное управление).
+    state.updateCrabInversion();
+
     // Обновляем FOV с учетом стен
     state.map.computeFOV(state.player.pos.x, state.player.pos.y, state.torchRadius, true);
 }
@@ -456,6 +714,10 @@ void GameState::generateNewLevel()
     player.pos.x = 5;
     player.pos.y = 5;
     map.setCell(player.pos.x, player.pos.y, SYM_FLOOR);
+
+    // На новом уровне всегда начинаем без активного эффекта краба.
+    isPlayerControlsInverted = false;
+    crabInversionTurnsRemaining = 0;
     
     // Создаем несколько крыс на случайных позициях
     const int ratsToSpawn = 5 + level; // Больше крыс на более высоких уровнях
@@ -549,6 +811,27 @@ void GameState::generateNewLevel()
         }
     }
 
+    // Создаем крабов на случайных позициях
+    const int crabsToSpawn = 2 + level / 2;
+    for (int i = 0; i < crabsToSpawn; ++i) {
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            int cx = std::rand() % Map::WIDTH;
+            int cy = std::rand() % Map::HEIGHT;
+
+            if (map.getCell(cx, cy) == SYM_FLOOR &&
+                !(cx == player.pos.x && cy == player.pos.y) &&
+                !map.isExit(cx, cy)) {
+                // Ярко-оранжевый цвет для обычного краба
+                Entity crab(cx, cy, SYM_CRAB, TCOD_ColorRGB{255, 140, 0});
+                crab.maxHealth = 4;
+                crab.health = crab.maxHealth;
+                crab.damage = 1; // основной "урон" краба — особые эффекты
+                enemies.push_back(crab);
+                break;
+            }
+        }
+    }
+
     // Инициализируем FOV
     map.computeFOV(player.pos.x, player.pos.y, torchRadius, true);
 }
@@ -578,6 +861,10 @@ void GameState::restartGame()
     // Сбрасываем эффект призрака — после смерти начинаем "чисто".
     isPlayerGhostCursed = false;
     ghostCurseTurnsRemaining = 0;
+
+    // Сбрасываем эффект краба (инверсия управления).
+    isPlayerControlsInverted = false;
+    crabInversionTurnsRemaining = 0;
 
     // Восстанавливаем здоровье игрока
     player.health = player.maxHealth;

@@ -402,10 +402,19 @@ void Graphics::drawUI(const Entity& player,
         }
     };
     
-    // Выводим "> Move: [WASD]"
+    // Выводим "> Move: [WASD]" или "> Move: [????]" при эффекте краба.
+    // Чтобы не тянуть сюда все состояние GameState, просто проверяем,
+    // есть ли среди врагов краб, прицепленный к игроку.
+    bool isPlayerControlsInverted = false;
+    for (const auto& enemy : enemies) {
+        if (enemy.symbol == SYM_CRAB && enemy.crabAttachedToPlayer) {
+            isPlayerControlsInverted = true;
+            break;
+        }
+    }
     putChar('>');
     putChar(' ');
-    const char* moveText = "Move: [WASD]";
+    const char* moveText = isPlayerControlsInverted ? "Move: [????]" : "Move: [WASD]";
     for (int i = 0; moveText[i] != '\0'; ++i) {
         putChar(moveText[i]);
     }
@@ -415,8 +424,8 @@ void Graphics::drawUI(const Entity& player,
     putChar('|');
     putChar(' ');
     
-    // Выводим "Diag: [QEZC]"
-    const char* diagText = "Diag: [QEZC]";
+    // Выводим "Diag: [QEZC]" или "Diag: [????]" при эффекте краба.
+    const char* diagText = isPlayerControlsInverted ? "Diag: [????]" : "Diag: [QEZC]";
     for (int i = 0; diagText[i] != '\0'; ++i) {
         putChar(diagText[i]);
     }
@@ -557,7 +566,16 @@ void Graphics::drawUI(const Entity& player,
         console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
         cursorX++;
     }
-    safePrint(" Ghost", tcod::ColorRGB{180, 180, 180});
+    safePrint(" Ghost ", tcod::ColorRGB{180, 180, 180});
+
+    // Легенда для краба: "C Crab"
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = 'C';
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{255, 140, 0}; // Ярко-оранжевый краб
+        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+        cursorX++;
+    }
+    safePrint(" Crab", tcod::ColorRGB{180, 180, 180});
 
     // --- Линии 5+: список видимых врагов с их HP ---
     const int headerY = uiY + 4;
@@ -590,6 +608,8 @@ void Graphics::drawUI(const Entity& player,
             mobName = "Snake";
         } else if (enemy.symbol == SYM_GHOST) {
             mobName = "Ghost";
+        } else if (enemy.symbol == SYM_CRAB) {
+            mobName = "Crab";
         } else {
             mobName = "Rat";
         }

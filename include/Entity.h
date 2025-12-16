@@ -11,6 +11,7 @@ enum GameSymbols {
     SYM_BEAR   = 'B',    // Медведь
     SYM_SNAKE  = 'S',    // Змея
     SYM_GHOST  = 'g',    // Призрак
+    SYM_CRAB   = 'C',    // Краб
     SYM_ITEM   = '$',    // Medkit отображается символом $ (CP437 код 36)
     SYM_EXIT   = '#',    // Выход на следующий уровень (совпадает с SYM_WALL)
     SYM_MAX_HP = '+'     // Новый предмет для увеличения максимального здоровья
@@ -32,6 +33,13 @@ public:
     int health;
     int maxHealth;
     int damage;
+
+    // Дополнительные поля, которые используются только некоторыми типами мобов.
+    // Для краба:
+    //  - crabAttachedToPlayer == true, если краб "прицепился" к игроку и инвертирует управление.
+    //  - crabAttachmentCooldown > 0, если краб недавно отцепился и пока не может снова цепляться.
+    bool crabAttachedToPlayer;
+    int  crabAttachmentCooldown;
 
     Entity(int startX, int startY, int sym, const TCOD_ColorRGB& col);
     void move(int dx, int dy);
