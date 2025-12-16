@@ -48,6 +48,8 @@ public:
     void addItem(int x, int y, int healAmount, int maxHealthBoost, char symbol);
     void addHealItem(int x, int y, int healAmount);
     void addMaxHealthItem(int x, int y, int maxHealthBoost);
+    void addGhostItem(int x, int y); // Прозрачный предмет '.'
+    void addShieldItem(int x, int y); // Щит "O"
     Item* getItemAt(int x, int y);
     void removeItem(int index);
     

@@ -13,6 +13,7 @@ struct GameState {
     bool isRunning;
     int torchRadius; // Радиус факела для FOV
     int level;       // Текущий уровень (начинается с 1)
+    int shieldTurns; // Количество ходов с эффектом щита
 
     GameState(); // Конструктор задает стартовые значения.
     void updateEnemies(); // Обновление позиций врагов

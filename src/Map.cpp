@@ -189,6 +189,18 @@ void Map::addMaxHealthItem(int x, int y, int maxHealthBoost)
     addItem(x, y, 0, maxHealthBoost, SYM_MAX_HP);
 }
 
+void Map::addGhostItem(int x, int y)
+{
+    // Прозрачный предмет '.' ничего не лечит и не бустит HP
+    addItem(x, y, 0, 0, SYM_GHOST_ITEM);
+}
+
+void Map::addShieldItem(int x, int y)
+{
+    // Щит: не лечит и не увеличивает максимум HP
+    addItem(x, y, 0, 0, SYM_SHIELD);
+}
+
 Item* Map::getItemAt(int x, int y)
 {
     for (size_t i = 0; i < items.size(); ++i) {

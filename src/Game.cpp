@@ -9,7 +9,8 @@ GameState::GameState()
       player(5, 5, SYM_PLAYER, TCOD_ColorRGB{100, 200, 255}),
       isRunning(true),
       torchRadius(8), // Радиус факела
-      level(1)        // Начинаем с уровня 1
+      level(1),       // Начинаем с уровня 1
+      shieldTurns(0)  // Эффект щита неактивен
 {
     // Инициализируем генератор случайных чисел один раз.
     std::srand(static_cast<unsigned>(std::time(nullptr)));
@@ -109,7 +110,12 @@ void GameState::processCombat()
                 // Случайное количество клеток от 4 до 7
                 int knockbackDistance = 4 + (std::rand() % 4); // 4, 5, 6 или 7
                 
-                // Применяем отбрасывание
+                // Если есть эффект щита, отбрасывание не действует
+                if (shieldTurns > 0) {
+                    // Эффект щита даст защиту и уменьшится после любого хода
+                    continue;
+                }
+                // Применяем отбрасывание обычным образом
                 for (int step = 0; step < knockbackDistance; ++step) {
                     int newX = player.pos.x + knockbackDx;
                     int newY = player.pos.y + knockbackDy;
@@ -176,6 +182,20 @@ void GameState::processItems()
                 }
             }
 
+            // Прозрачный предмет '.' наносит 15% от максимального здоровья.
+            if (item.symbol == SYM_GHOST_ITEM) {
+                int damage = std::max(1, player.maxHealth * 15 / 100);
+                player.health -= damage;
+                if (player.health < 0) {
+                    player.health = 0;
+                }
+            }
+
+            // Предмет-щит 'O' даёт защиту от откидывания (5 ходов).
+            if (item.symbol == SYM_SHIELD) {
+                shieldTurns = 5;
+            }
+
             // Убираем предмет
             map.removeItem(i);
         }
@@ -228,6 +248,10 @@ void handleInput(GameState& state, int key)
     if (dx != 0 || dy != 0) {
         int newX = state.player.pos.x + dx;
         int newY = state.player.pos.y + dy;
+        // Если действует щит — уменьшаем количество ходов
+        if (state.shieldTurns > 0) {
+            state.shieldTurns--;
+        }
 
         // Проверяем границы
         if (newX >= 0 && newX < Map::WIDTH &&
@@ -320,6 +344,57 @@ void GameState::generateNewLevel()
                 // Случайный урон от 3 до 5
                 bear.damage = 3 + (std::rand() % 3); // 3, 4 или 5
                 enemies.push_back(bear);
+                break;
+            }
+        }
+    }
+
+    // Спавним призрачные предметы '.' в случайных местах (не больше 5 за карту)
+    const int ghostToSpawn = 1 + (std::rand() % 5); // от 1 до 5 штук
+    for (int i = 0; i < ghostToSpawn; ++i) {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int gx = std::rand() % Map::WIDTH;
+            int gy = std::rand() % Map::HEIGHT;
+
+            // Свободная клетка: пол, не игрок, не выход, нет врага и предмета
+            bool occupiedByEnemy = false;
+            for (const auto& e : enemies) {
+                if (e.isAlive() && e.pos.x == gx && e.pos.y == gy) {
+                    occupiedByEnemy = true;
+                    break;
+                }
+            }
+            if (occupiedByEnemy) continue;
+
+            if (map.getCell(gx, gy) == SYM_FLOOR &&
+                !(gx == player.pos.x && gy == player.pos.y) &&
+                !map.isExit(gx, gy) &&
+                map.getItemAt(gx, gy) == nullptr) {
+                map.addGhostItem(gx, gy);
+                break;
+            }
+        }
+    }
+
+    // Спавним предмет-щиты 'O' (до 3 на карту)
+    const int shieldsToSpawn = 3;
+    for (int shield = 0; shield < shieldsToSpawn; ++shield) {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int sx = std::rand() % Map::WIDTH;
+            int sy = std::rand() % Map::HEIGHT;
+            bool occupiedByEnemy = false;
+            for (const auto& e : enemies) {
+                if (e.isAlive() && e.pos.x == sx && e.pos.y == sy) {
+                    occupiedByEnemy = true;
+                    break;
+                }
+            }
+            if (occupiedByEnemy) continue;
+            if (map.getCell(sx, sy) == SYM_FLOOR &&
+                !(sx == player.pos.x && sy == player.pos.y) &&
+                !map.isExit(sx, sy) &&
+                map.getItemAt(sx, sy) == nullptr) {
+                map.addShieldItem(sx, sy);
                 break;
             }
         }
