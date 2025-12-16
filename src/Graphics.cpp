@@ -257,6 +257,28 @@ void Graphics::drawUI(const Entity& player,
                       int questKills,
                       int questTarget)
 {
+    char buffer[256];
+
+    // --- Надпись квеста в верхней части карты (y=0) ---
+    if (questActive && questTarget > 0) {
+        snprintf(buffer,
+                 sizeof(buffer),
+                 "Квест убей %d монстров",
+                 questTarget);
+        // Выводим поверх карты с полупрозрачным фоном для читаемости
+        for (int x = 0; x < screenWidth && x < static_cast<int>(strlen(buffer)); ++x) {
+            if (console.in_bounds({x, 0})) {
+                console.at({x, 0}).ch = (x < static_cast<int>(strlen(buffer))) ? buffer[x] : ' ';
+                console.at({x, 0}).fg = tcod::ColorRGB{220, 220, 220};
+                console.at({x, 0}).bg = tcod::ColorRGB{20, 20, 20}; // Темный фон для читаемости
+            }
+        }
+        // Используем tcod::print для более надежного вывода
+        try {
+            tcod::print(console, {0, 0}, buffer, tcod::ColorRGB{220, 220, 220}, tcod::ColorRGB{20, 20, 20});
+        } catch (const std::exception&) {}
+    }
+
     // Рисуем UI сразу под картой (используем первую доступную строку)
     int uiY = Map::HEIGHT;
 
@@ -267,8 +289,6 @@ void Graphics::drawUI(const Entity& player,
             console.at({x, y}).bg = tcod::ColorRGB{0, 0, 0};
         }
     }
-
-    char buffer[256];
 
     // --- Линия 1: здоровье игрока — полоса, затем цифры справа ---
     const float healthPercent = std::clamp(static_cast<float>(player.health) / static_cast<float>(player.maxHealth), 0.0f, 1.0f);
@@ -348,20 +368,8 @@ void Graphics::drawUI(const Entity& player,
         }
     }
 
-    // --- Линия 2: квест или уровень/позиция ---
+    // --- Линия 2: уровень и позиция ---
     int infoLineY = uiY + 2;
-    if (questActive && questTarget > 0) {
-        // Квестовая строка: "Квест убей N монстров"
-        snprintf(buffer,
-                 sizeof(buffer),
-                 "Квест убей %d монстров",
-                 questTarget);
-        try {
-            tcod::print(console, {0, infoLineY}, buffer, tcod::ColorRGB{220, 220, 220}, std::nullopt);
-        } catch (const std::exception&) {}
-        infoLineY++; // Следующая строка для уровня
-    }
-
     // Строка уровня и позиции
     snprintf(buffer,
              sizeof(buffer),
@@ -428,29 +436,40 @@ void Graphics::drawUI(const Entity& player,
         putChar(fullText[i]);
     }
 
-    // Показ счётчика квеста и/или оставшихся ходов щита на следующих строках
+    // Показ счётчика квеста и таймера щита в одной строке (с переносом при нехватке места)
+    auto printText = [&](const char* txt) {
+        for (int i = 0; txt[i] != '\0'; ++i) {
+            putChar(txt[i]);
+        }
+    };
+
+    // Проверяем, влезет ли текст перед выводом
+    auto checkAndPrint = [&](const char* txt) -> bool {
+        int textLen = static_cast<int>(strlen(txt));
+        // Если текст не влезает на текущую строку, переносим на новую
+        if (controlX + textLen > screenWidth && controlX > 0) {
+            nextControlLine();
+            if (controlY >= screenHeight) return false;
+        }
+        printText(txt);
+        return true;
+    };
+
+    bool printedSomething = false;
     if (questActive && questTarget > 0) {
-        nextControlLine();
-        snprintf(buffer, sizeof(buffer), "Kill %d/%d", questKills, questTarget);
-        for (int i = 0; buffer[i] != '\0'; ++i) {
-            putChar(buffer[i]);
+        snprintf(buffer, sizeof(buffer), " | Kill %d/%d", questKills, questTarget);
+        if (checkAndPrint(buffer)) {
+            printedSomething = true;
         }
     }
     if (shieldTurns > 0) {
-        nextControlLine();
-        const char* shieldLabel = "Shield:";
-        for (int i = 0; shieldLabel[i] != '\0'; ++i) putChar(shieldLabel[i]);
-        char shieldBuf[32];
-        snprintf(shieldBuf, sizeof(shieldBuf), "%d", shieldTurns);
-        for (int i = 0; shieldBuf[i] != '\0'; ++i) {
-            putChar(shieldBuf[i]);
-        }
+        snprintf(buffer, sizeof(buffer), printedSomething ? " | Shield:%d" : "Shield:%d", shieldTurns);
+        checkAndPrint(buffer);
     }
-    
 
     // --- Линия 4+: легенда с переносом ---
-    // Легенда начинается после последней строки панели управления
-    int legendY = controlY + 2;
+    // Легенда начинается сразу после последней строки панели управления (без пустой строки)
+    int legendY = controlY + 1;
     int legendX = 0;
 
     auto nextLegendLine = [&]() {
