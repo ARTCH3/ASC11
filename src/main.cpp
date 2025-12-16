@@ -48,11 +48,12 @@ int main()
             graphics.drawEntity(exitEntity);
         }
 
-        // Рисуем игрока (с динамическим цветом в зависимости от здоровья)
-        graphics.drawPlayer(game.player);
+        // Рисуем игрока (с динамическим цветом в зависимости от здоровья
+        // и особой ядовито-зелёной раскраской во время отравления)
+        graphics.drawPlayer(game.player, game.isPlayerPoisoned);
 
-        // Рисуем UI
-        graphics.drawUI(game.player, game.enemies, game.level, game.map);
+        // Рисуем UI (полоса HP тоже меняет цвет при отравлении)
+        graphics.drawUI(game.player, game.enemies, game.level, game.map, game.isPlayerPoisoned);
 
         // Обновляем экран
         graphics.refreshScreen();

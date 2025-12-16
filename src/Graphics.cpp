@@ -56,6 +56,10 @@ Graphics::Graphics(int width, int height)
 
 Graphics::~Graphics() = default;
 
+// Вспомогательная функция для плавного перехода между двумя цветами.
+// Объявление нужно здесь, чтобы её было видно в drawPlayer ниже.
+static tcod::ColorRGB lerpColor(const tcod::ColorRGB& a, const tcod::ColorRGB& b, float t);
+
 void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius)
 {
     // Обновляем эффект факела с пульсацией
@@ -172,7 +176,7 @@ void Graphics::drawItem(const Item& item)
     }
 }
 
-void Graphics::drawPlayer(const Entity& player)
+void Graphics::drawPlayer(const Entity& player, bool isPoisoned)
 {
     // Рисуем игрока с динамическим цветом в зависимости от здоровья
     int x = player.pos.x;
@@ -181,27 +185,36 @@ void Graphics::drawPlayer(const Entity& player)
     if (x >= 0 && x < Map::WIDTH && y >= 0 && y < Map::HEIGHT &&
         x < screenWidth && y < screenHeight &&
         console.in_bounds({x, y})) {
-        // Вычисляем цвет в зависимости от здоровья с резкими переходами каждые 20%
-        // Избегаем желто-оранжевых оттенков, которые сливаются с факелом
+        // Вычисляем цвет в зависимости от здоровья.
+        // Если игрок отравлен — временно перекрашиваем его в ядовито‑зелёный цвет,
+        // чтобы было сразу видно состояние.
         float healthPercent = static_cast<float>(player.health) / static_cast<float>(player.maxHealth);
         
         tcod::ColorRGB playerColor;
         
-        if (healthPercent > 0.8f) {
-            // 80-100%: яркий голубой/бирюзовый
-            playerColor = tcod::ColorRGB{100, 255, 255};
-        } else if (healthPercent > 0.6f) {
-            // 60-80%: яркий зеленый
-            playerColor = tcod::ColorRGB{50, 255, 100};
-        } else if (healthPercent > 0.4f) {
-            // 40-60%: желто-зеленый (но не слишком желтый)
-            playerColor = tcod::ColorRGB{150, 255, 50};
-        } else if (healthPercent > 0.2f) {
-            // 20-40%: оранжево-красный
-            playerColor = tcod::ColorRGB{255, 150, 0};
+        if (isPoisoned) {
+            // Ядовитый/болотный зелёный, немного темнее при низком HP.
+            const tcod::ColorRGB highHpPoison{80, 240, 120};
+            const tcod::ColorRGB lowHpPoison{20, 100, 40};
+            playerColor = lerpColor(lowHpPoison, highHpPoison, std::clamp(healthPercent, 0.0f, 1.0f));
         } else {
-            // 0-20%: яркий красный
-            playerColor = tcod::ColorRGB{255, 0, 0};
+            // Обычная схема цвета игрока по здоровью.
+            if (healthPercent > 0.8f) {
+                // 80-100%: яркий голубой/бирюзовый
+                playerColor = tcod::ColorRGB{100, 255, 255};
+            } else if (healthPercent > 0.6f) {
+                // 60-80%: яркий зеленый
+                playerColor = tcod::ColorRGB{50, 255, 100};
+            } else if (healthPercent > 0.4f) {
+                // 40-60%: желто-зеленый (но не слишком желтый)
+                playerColor = tcod::ColorRGB{150, 255, 50};
+            } else if (healthPercent > 0.2f) {
+                // 20-40%: оранжево-красный
+                playerColor = tcod::ColorRGB{255, 150, 0};
+            } else {
+                // 0-20%: яркий красный
+                playerColor = tcod::ColorRGB{255, 0, 0};
+            }
         }
         
         console.at({x, y}).ch = player.symbol;
@@ -240,7 +253,8 @@ static tcod::ColorRGB lerpColor(const tcod::ColorRGB& a, const tcod::ColorRGB& b
 void Graphics::drawUI(const Entity& player,
                       const std::vector<Entity>& enemies,
                       int level,
-                      const Map& map)
+                      const Map& map,
+                      bool isPlayerPoisoned)
 {
     // Рисуем UI сразу под картой (используем первую доступную строку)
     int uiY = Map::HEIGHT;
@@ -274,8 +288,8 @@ void Graphics::drawUI(const Entity& player,
     const int barWidth = std::max(0, screenWidth - barX - reserveForText);
     const int filled = static_cast<int>(std::round(healthPercent * barWidth));
 
-    // Градиент перевернутый: красный -> желтый -> зеленый -> синий (совпадает с состояниями игрока, но в обратном направлении)
-    auto hpGradient = [](float t) {
+    // Обычный градиент HP: красный -> желтый -> зеленый -> синий (совпадает с состояниями игрока, но в обратном направлении)
+    auto hpGradientNormal = [](float t) {
         const tcod::ColorRGB red{255, 60, 60};
         const tcod::ColorRGB yellow{255, 220, 80};
         const tcod::ColorRGB green{80, 220, 120};
@@ -297,8 +311,25 @@ void Graphics::drawUI(const Entity& player,
         const bool isFilled = i < filled;
         tcod::ColorRGB c = tcod::ColorRGB{60, 60, 60}; // цвет для пустых (темно-серый)
         if (isFilled) {
-            const float t = (barWidth <= 1) ? 0.0f : static_cast<float>(i) / static_cast<float>(barWidth - 1);
-            c = hpGradient(t);
+            if (isPlayerPoisoned) {
+                // При отравлении все квадратики HP временно становятся зелёными,
+                // но не одинаковыми: оттенок зависит от текущего уровня здоровья.
+                // Чем меньше HP — тем более "тёмный/болотный" зелёный.
+                const tcod::ColorRGB highHpGreen{90, 240, 120};
+                const tcod::ColorRGB lowHpGreen{10, 80, 30};
+                tcod::ColorRGB base = lerpColor(lowHpGreen, highHpGreen, healthPercent);
+
+                // Лёгкая вариация по ширине полосы, чтобы квадратики не были одного цвета.
+                const float tBlock = (barWidth <= 1) ? 0.0f : static_cast<float>(i) / static_cast<float>(barWidth - 1);
+                const float brightness = 0.8f + 0.2f * tBlock; // от 0.8 до 1.0
+                c = tcod::ColorRGB{
+                    static_cast<uint8_t>(std::clamp(static_cast<int>(base.r * brightness), 0, 255)),
+                    static_cast<uint8_t>(std::clamp(static_cast<int>(base.g * brightness), 0, 255)),
+                    static_cast<uint8_t>(std::clamp(static_cast<int>(base.b * brightness), 0, 255))};
+            } else {
+                const float t = (barWidth <= 1) ? 0.0f : static_cast<float>(i) / static_cast<float>(barWidth - 1);
+                c = hpGradientNormal(t);
+            }
         }
         if (console.in_bounds({barX + i, uiY})) {
             // Используем пробел с цветным фоном для отображения полосы HP
@@ -493,6 +524,21 @@ void Graphics::drawUI(const Entity& player,
     }
     safePrint(" Stairs", tcod::ColorRGB{200, 200, 120});
 
+    // Место для легенды змеи: "S Snake"
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = ' ';
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{180, 180, 180};
+        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+        cursorX++;
+    }
+    if (cursorX < screenWidth && console.in_bounds({cursorX, legendY})) {
+        console.at({cursorX, legendY}).ch = 'S';
+        console.at({cursorX, legendY}).fg = tcod::ColorRGB{60, 130, 60}; // Болотно-зелёный для змеи
+        console.at({cursorX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
+        cursorX++;
+    }
+    safePrint(" Snake", tcod::ColorRGB{180, 180, 180});
+
     // --- Линии 5+: список видимых врагов с их HP ---
     const int headerY = uiY + 4;
     // Убрали заголовок "Enemies in sight:" - сразу выводим список врагов
@@ -520,6 +566,8 @@ void Graphics::drawUI(const Entity& player,
         std::string mobName;
         if (enemy.symbol == SYM_BEAR) {
             mobName = "Bear";
+        } else if (enemy.symbol == SYM_SNAKE) {
+            mobName = "Snake";
         } else {
             mobName = "Rat";
         }
