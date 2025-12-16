@@ -49,11 +49,21 @@ int main()
             graphics.drawEntity(exitEntity);
         }
 
-        // Рисуем игрока (с динамическим цветом в зависимости от здоровья)
-        graphics.drawPlayer(game.player);
+        // Рисуем игрока (с динамическим цветом в зависимости от здоровья,
+        // особой ядовито-зелёной раскраской во время отравления и
+        // независимым визуальным эффектом от призрака, который прячет HP в HUD).
+        graphics.drawPlayer(game.player, game.isPlayerPoisoned);
 
-        // Рисуем UI
-        graphics.drawUI(game.player, game.enemies, game.level, game.map);
+        // Рисуем UI.
+        // При действии яда полоска HP меняет цвет на "ядовитый" зелёный,
+        // а при действии эффекта призрака все квадраты становятся серыми,
+        // и вместо цифр отображаются вопросительные знаки.
+        graphics.drawUI(game.player,
+                        game.enemies,
+                        game.level,
+                        game.map,
+                        game.isPlayerPoisoned,
+                        game.isPlayerGhostCursed);
 
         // Обновляем экран
         graphics.refreshScreen();

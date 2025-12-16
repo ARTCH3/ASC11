@@ -7,7 +7,9 @@ Entity::Entity(int startX, int startY, int sym, const TCOD_ColorRGB& col)
       color(col),
       health(20),
       maxHealth(20),
-      damage(1)
+      damage(1),
+      crabAttachedToPlayer(false),
+      crabAttachmentCooldown(0)
 {
 }
 

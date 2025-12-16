@@ -18,11 +18,6 @@ class Map;
 class Entity;
 struct Item;
 
-// Вперед объявляем классы, чтобы не тянуть сюда все заголовки.
-class Map;
-class Entity;
-struct Item;
-
 // Класс для работы с выводом через libtcod.
 // Использует TCOD_Context для окна и TCOD_Console для отрисовки.
 class Graphics {
@@ -51,12 +46,16 @@ public:
 
     void drawMap(const Map& map, int playerX, int playerY, int torchRadius);
     void drawEntity(const Entity& entity);
-    void drawPlayer(const Entity& player); // Специальный метод для игрока с динамическим цветом
+    // Специальный метод для игрока с динамическим цветом.
+    // Параметр isPoisoned позволяет временно перекрасить игрока в ядовито-зелёный цвет.
+    void drawPlayer(const Entity& player, bool isPoisoned);
     void drawItem(const Item& item);
     void drawUI(const Entity& player,
                 const std::vector<Entity>& enemies,
                 int level,
-                const Map& map);
+                const Map& map,
+                bool isPlayerPoisoned,
+                bool isPlayerGhostCursed);
     void refreshScreen();
     void clearScreen();
     // Читает одну клавишу. Возвращает true если что-то нажали.
