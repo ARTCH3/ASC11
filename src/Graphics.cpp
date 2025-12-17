@@ -6,9 +6,11 @@
 #include <array>
 #include <cmath>
 #include <ctime>
+#include <cstdlib>
 #include <SDL2/SDL.h>
 #include <string>
 #include <cstring>
+#include <vector>
 
 Graphics::Graphics(int width,
                    int height,
@@ -76,7 +78,7 @@ Graphics::~Graphics() = default;
 // Объявление нужно здесь, чтобы её было видно в drawPlayer ниже.
 static tcod::ColorRGB lerpColor(const tcod::ColorRGB& a, const tcod::ColorRGB& b, float t);
 
-void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius)
+void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius, bool showExitHint, const std::vector<std::pair<int, int>>& fireflyPositions)
 {
     // Обновляем эффект факела с пульсацией в реальном времени
     // Используем SDL_GetTicks() для надежного измерения времени (работает каждый кадр!)
@@ -162,9 +164,36 @@ void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius
                     // Делаем более мягкий переход (используем квадратный корень для более плавного затухания)
                     float normalizedDist = r / SQUARED_TORCH_RADIUS;
                     float smoothDist = std::sqrt(normalizedDist); // Более плавное затухание
-                    // l = 1.0 в позиции игрока, 0.0 на границе радиуса, с учетом пульсации
+                    // Старая красивая пульсирующая формула: l = 1.0 в позиции игрока, 0.0 на границе радиуса, с учетом пульсации
                     const float l = std::clamp((1.0f - smoothDist) * (0.7f + di), 0.0f, 1.0f);
                     base = tcod::ColorRGB{TCODColor::lerp(base, light, l)};
+                }
+                
+                // Добавляем свет от светлячков (факел с меньшим радиусом, пульсирующий в реальном времени)
+                if (!fireflyPositions.empty()) {
+                    // Радиус факела светлячка (меньше чем у игрока)
+                    const float FIREFLY_TORCH_RADIUS = 2.0f;
+                    const float SQUARED_FIREFLY_RADIUS = FIREFLY_TORCH_RADIUS * FIREFLY_TORCH_RADIUS;
+                    
+                    // Пульсация для светлячков (синхронизирована с основным временем, как у игрока)
+                    float fireflyPulse = 0.25f + 0.1f * std::sin(time * 2.0f); // Та же пульсация что у игрока
+                    float fireflyDi = fireflyPulse * (0.5f + 0.5f * torchNoise.get(&torchX)); // Комбинируем с шумом
+                    
+                    for (const auto& fireflyPos : fireflyPositions) {
+                        // Вычисляем расстояние до светлячка (с учетом небольшого смещения для мерцания)
+                        float fireflyDx = torchNoise.get(&torchX) * 0.3f;
+                        float fireflyDy = torchNoise.get(&torchX) * 0.3f;
+                        const float fireflyDist = static_cast<float>((mapX - fireflyPos.first + fireflyDx) * (mapX - fireflyPos.first + fireflyDx) + 
+                                                                     (mapY - fireflyPos.second + fireflyDy) * (mapY - fireflyPos.second + fireflyDy));
+                        
+                        if (fireflyDist < SQUARED_FIREFLY_RADIUS) {
+                            // Интерполируем цвет с учетом пульсации (как у игрока)
+                            float normalizedFireflyDist = fireflyDist / SQUARED_FIREFLY_RADIUS;
+                            float smoothFireflyDist = std::sqrt(normalizedFireflyDist);
+                            const float fireflyLight = std::clamp((1.0f - smoothFireflyDist) * (0.7f + fireflyDi), 0.0f, 1.0f);
+                            base = tcod::ColorRGB{TCODColor::lerp(base, light, fireflyLight)};
+                        }
+                    }
                 }
                 
                 // Рисуем цветной блок
@@ -172,6 +201,20 @@ void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius
                 console.at({screenX, screenY}).ch = 219; // Символ блока (CP437 код 219 = █)
                 console.at({screenX, screenY}).fg = base;
             }
+        }
+    }
+
+    // Дополнительно: если нужно подсветить лестницу (подсказка направления),
+    // рисуем символ выхода поверх всего, даже если он вне текущего FOV.
+    if (showExitHint && map.exitPos.x >= 0 && map.exitPos.y >= 0) {
+        int ex = map.exitPos.x;
+        int ey = map.exitPos.y;
+        int sx = leftPanelWidth + ex;
+        int sy = topPanelHeight + ey;
+        if (console.in_bounds({sx, sy})) {
+            auto& cell = console.at({sx, sy});
+            cell.ch = '#';
+            cell.fg = tcod::ColorRGB{255, 255, 255};
         }
     }
 }
@@ -231,6 +274,293 @@ void Graphics::drawItem(const Item& item)
         console.at({screenX, screenY}).ch = item.symbol;
         console.at({screenX, screenY}).fg = itemColor;
     }
+}
+
+// Оверлей выбора перка при переходе по лестнице.
+// Закрашивает центральный слой (игровой мир) в чёрный и рисует три колонки с вариантами.
+void Graphics::drawLevelChoiceMenu(int variant1, int variant2, int variant3)
+{
+    const int gameAreaStartX = leftPanelWidth;
+    const int gameAreaStartY = std::max(topPanelHeight, 2);
+    const int gameWidth = Map::WIDTH;
+    const int gameHeight = Map::HEIGHT;
+
+    // 1. Полностью "затемняем" центральную область (игровой мир).
+    for (int y = 0; y < gameHeight; ++y) {
+        for (int x = 0; x < gameWidth; ++x) {
+            int sx = gameAreaStartX + x;
+            int sy = gameAreaStartY + y;
+            if (!console.in_bounds({sx, sy})) continue;
+            auto& cell = console.at({sx, sy});
+            cell.bg = tcod::ColorRGB{0, 0, 0};
+            cell.ch = ' ';
+            cell.fg = tcod::ColorRGB{255, 255, 255};
+        }
+    }
+
+    // Небольшой helper для рисования текста по центру.
+    auto drawText = [&](int sx, int sy, const std::string& text, const tcod::ColorRGB& color = tcod::ColorRGB{255, 255, 255}) {
+        for (int i = 0; i < static_cast<int>(text.size()); ++i) {
+            int x = sx + i;
+            int y = sy;
+            if (!console.in_bounds({x, y})) continue;
+            console.at({x, y}).ch = text[i];
+            console.at({x, y}).fg = color;
+        }
+    };
+
+    // 2. Заголовок чуть выше центра.
+    const std::string title = "Make one choice";
+    int centerX = gameAreaStartX + gameWidth / 2;
+    int titleX = centerX - static_cast<int>(title.size()) / 2;
+    int titleY = gameAreaStartY + gameHeight / 4;
+    drawText(titleX, titleY, title);
+
+    // 3. Три колонки: левая, центральная и правая.
+    int colYStart = titleY + 3;
+    int col1Center = gameAreaStartX + gameWidth / 6;
+    int col2Center = gameAreaStartX + gameWidth / 2;
+    int col3Center = gameAreaStartX + (gameWidth * 5) / 6;
+
+    // Функция для рисования одной колонки с новым оформлением
+    auto drawColumn = [&](int center, int num, const std::string& category, 
+                          const std::vector<std::string>& effects) {
+        int y = colYStart;
+        
+        // Первая строка: [1], [2] или [3]
+        std::string numStr = "[" + std::to_string(num) + "]";
+        int numX = center - static_cast<int>(numStr.size()) / 2;
+        drawText(numX, y, numStr, tcod::ColorRGB{255, 255, 100}); // Жёлтый цвет для номера
+        y += 2;
+        
+        // Вторая строка: "-On each floor-" или "-Next floor only-" и т.д.
+        std::string categoryLine = "-" + category + "-";
+        int catX = center - static_cast<int>(categoryLine.size()) / 2;
+        drawText(catX, y, categoryLine);
+        y += 2;
+        
+        // Далее список эффектов, каждый на новой строке
+        for (const auto& effect : effects) {
+            int effX = center - static_cast<int>(effect.size()) / 2;
+            drawText(effX, y, effect);
+            y += 1;
+        }
+    };
+
+    // Используем переданные варианты из расширенного пула модификаторов
+    // Вариант 1: Постоянные эффекты (On each floor)
+    int v1 = variant1;
+    std::vector<std::string> effects1;
+    if (v1 == 0) {
+        effects1 = {"+5 rats", "+2 medkits", "Firefly reveals fog"};
+    } else if (v1 == 1) {
+        effects1 = {"+3 bears", "+1 shield", "Max HP +5"};
+    } else if (v1 == 2) {
+        effects1 = {"+4 snakes", "+3 medkits", "Torch +2 radius"};
+    } else if (v1 == 3) {
+        effects1 = {"+2 ghosts", "+2 MaxHP items", "Firefly reveals fog"};
+    } else if (v1 == 4) {
+        effects1 = {"+3 crabs", "+4 medkits", "Shield +2"};
+    } else {
+        effects1 = {"+6 rats", "+1 Firefly", "Torch +1 radius"};
+    }
+    drawColumn(col1Center, 1, "On each floor", effects1);
+
+    // Вариант 2: Случайные эффекты (Random)
+    int v2 = variant2;
+    std::vector<std::string> effects2;
+    if (v2 == 0) {
+        effects2 = {"Poison bears", "More shields", "Show stair hint"};
+    } else if (v2 == 1) {
+        effects2 = {"+3 rats next", "Ghost curse", "Torch -2 radius"};
+    } else if (v2 == 2) {
+        effects2 = {"Crab inversion", "+2 MaxHP next", "Firefly reveals"};
+    } else if (v2 == 3) {
+        effects2 = {"Snake poison", "+4 medkits next", "Shield +1"};
+    } else if (v2 == 4) {
+        effects2 = {"Bear poison", "Quest items", "Torch +1 radius"};
+    } else {
+        effects2 = {"Ghost curse", "+3 snakes next", "MaxHP +3"};
+    }
+    drawColumn(col2Center, 2, "Random", effects2);
+
+    // Вариант 3: Временные эффекты (Next floor only)
+    int v3 = variant3;
+    std::vector<std::string> effects3;
+    if (v3 == 0) {
+        effects3 = {"+2 snakes", "More MaxHP items", "Torch radius -3"};
+    } else if (v3 == 1) {
+        effects3 = {"+3 rats", "Torch radius -2", "+2 medkits"};
+    } else if (v3 == 2) {
+        effects3 = {"+1 bear", "MaxHP +2 items", "Torch radius -4"};
+    } else if (v3 == 3) {
+        effects3 = {"+2 ghosts", "Torch radius -3", "+3 medkits"};
+    } else if (v3 == 4) {
+        effects3 = {"+4 snakes", "Torch radius -2", "MaxHP +1 item"};
+    } else {
+        effects3 = {"+1 crab", "Torch radius -5", "+1 MaxHP item"};
+    }
+    drawColumn(col3Center, 3, "Next floor only", effects3);
+}
+
+// Вспомогательная функция для преобразования числа в римскую цифру
+static std::string intToRoman(int num) {
+    if (num <= 0) return "I";
+    std::string result;
+    const std::vector<std::pair<int, std::string>> values = {
+        {1000, "M"}, {900, "CM"}, {500, "D"}, {400, "CD"},
+        {100, "C"}, {90, "XC"}, {50, "L"}, {40, "XL"},
+        {10, "X"}, {9, "IX"}, {5, "V"}, {4, "IV"}, {1, "I"}
+    };
+    for (const auto& [value, symbol] : values) {
+        while (num >= value) {
+            result += symbol;
+            num -= value;
+        }
+    }
+    return result;
+}
+
+void Graphics::drawDeathScreen(int level,
+                                int killsRat, int killsBear, int killsSnake, int killsGhost, int killsCrab,
+                                int itemsMedkit, int itemsMaxHP, int itemsShield, int itemsTrap, int itemsQuest,
+                                const std::vector<std::string>& collectedPerks)
+{
+    const int gameAreaStartX = leftPanelWidth;
+    const int gameAreaStartY = std::max(topPanelHeight, 2);
+    const int gameWidth = Map::WIDTH;
+    const int gameHeight = Map::HEIGHT;
+
+    // 1. Полностью "затемняем" центральную область (игровой мир).
+    for (int y = 0; y < gameHeight; ++y) {
+        for (int x = 0; x < gameWidth; ++x) {
+            int sx = gameAreaStartX + x;
+            int sy = gameAreaStartY + y;
+            if (!console.in_bounds({sx, sy})) continue;
+            auto& cell = console.at({sx, sy});
+            cell.bg = tcod::ColorRGB{0, 0, 0};
+            cell.ch = ' ';
+            cell.fg = tcod::ColorRGB{255, 255, 255};
+        }
+    }
+
+    // Небольшой helper для рисования текста по центру.
+    auto drawText = [&](int sx, int sy, const std::string& text, const tcod::ColorRGB& color = tcod::ColorRGB{255, 255, 255}) {
+        for (int i = 0; i < static_cast<int>(text.size()); ++i) {
+            int x = sx + i;
+            int y = sy;
+            if (!console.in_bounds({x, y})) continue;
+            console.at({x, y}).ch = text[i];
+            console.at({x, y}).fg = color;
+        }
+    };
+
+    // 2. Заголовок "Game Over" чуть выше центра
+    const std::string title = "Game Over";
+    int centerX = gameAreaStartX + gameWidth / 2;
+    int titleX = centerX - static_cast<int>(title.size()) / 2;
+    int titleY = gameAreaStartY + gameHeight / 6;
+    drawText(titleX, titleY, title, tcod::ColorRGB{255, 0, 0}); // Красный цвет
+
+    // 3. Уровень в римской цифре
+    std::string floorText = "Floor " + intToRoman(level);
+    int floorX = centerX - static_cast<int>(floorText.size()) / 2;
+    int floorY = titleY + 2;
+    drawText(floorX, floorY, floorText);
+
+    // 4. Три столбца: убитые мобы, собранные предметы, модификации
+    int colYStart = floorY + 3;
+    int col1Center = gameAreaStartX + gameWidth / 6;
+    int col2Center = gameAreaStartX + gameWidth / 2;
+    int col3Center = gameAreaStartX + (gameWidth * 5) / 6;
+
+    // Столбец 1: Убитые мобы
+    int y1 = colYStart;
+    std::string erasedLabel = "Erased:";
+    drawText(col1Center - static_cast<int>(erasedLabel.size()) / 2, y1, erasedLabel, tcod::ColorRGB{255, 100, 100});
+    y1 += 2;
+    if (killsRat > 0) {
+        std::string text = "r - Rat (" + std::to_string(killsRat) + ")";
+        drawText(col1Center - static_cast<int>(text.size()) / 2, y1, text);
+        y1 += 1;
+    }
+    if (killsBear > 0) {
+        std::string text = "b - Bear (" + std::to_string(killsBear) + ")";
+        drawText(col1Center - static_cast<int>(text.size()) / 2, y1, text);
+        y1 += 1;
+    }
+    if (killsSnake > 0) {
+        std::string text = "s - Snake (" + std::to_string(killsSnake) + ")";
+        drawText(col1Center - static_cast<int>(text.size()) / 2, y1, text);
+        y1 += 1;
+    }
+    if (killsGhost > 0) {
+        std::string text = "g - Ghost (" + std::to_string(killsGhost) + ")";
+        drawText(col1Center - static_cast<int>(text.size()) / 2, y1, text);
+        y1 += 1;
+    }
+    if (killsCrab > 0) {
+        std::string text = "c - Crab (" + std::to_string(killsCrab) + ")";
+        drawText(col1Center - static_cast<int>(text.size()) / 2, y1, text);
+        y1 += 1;
+    }
+    if (killsRat == 0 && killsBear == 0 && killsSnake == 0 && killsGhost == 0 && killsCrab == 0) {
+        drawText(col1Center - 4, y1, "None");
+    }
+
+    // Столбец 2: Собранные предметы
+    int y2 = colYStart;
+    std::string itemsLabel = "Items:";
+    drawText(col2Center - static_cast<int>(itemsLabel.size()) / 2, y2, itemsLabel, tcod::ColorRGB{100, 255, 100});
+    y2 += 2;
+    if (itemsMedkit > 0) {
+        std::string text = "$ - Medkit (" + std::to_string(itemsMedkit) + ")";
+        drawText(col2Center - static_cast<int>(text.size()) / 2, y2, text);
+        y2 += 1;
+    }
+    if (itemsMaxHP > 0) {
+        std::string text = "+ - MaxHP (" + std::to_string(itemsMaxHP) + ")";
+        drawText(col2Center - static_cast<int>(text.size()) / 2, y2, text);
+        y2 += 1;
+    }
+    if (itemsShield > 0) {
+        std::string text = "O - Shield (" + std::to_string(itemsShield) + ")";
+        drawText(col2Center - static_cast<int>(text.size()) / 2, y2, text);
+        y2 += 1;
+    }
+    if (itemsTrap > 0) {
+        std::string text = ". - Trap (" + std::to_string(itemsTrap) + ")";
+        drawText(col2Center - static_cast<int>(text.size()) / 2, y2, text);
+        y2 += 1;
+    }
+    if (itemsQuest > 0) {
+        std::string text = "? - Quest (" + std::to_string(itemsQuest) + ")";
+        drawText(col2Center - static_cast<int>(text.size()) / 2, y2, text);
+        y2 += 1;
+    }
+    if (itemsMedkit == 0 && itemsMaxHP == 0 && itemsShield == 0 && itemsTrap == 0 && itemsQuest == 0) {
+        drawText(col2Center - 4, y2, "None");
+    }
+
+    // Столбец 3: Модификации (перки)
+    int y3 = colYStart;
+    std::string perksLabel = "Perks:";
+    drawText(col3Center - static_cast<int>(perksLabel.size()) / 2, y3, perksLabel, tcod::ColorRGB{100, 100, 255});
+    y3 += 2;
+    if (collectedPerks.empty()) {
+        drawText(col3Center - 4, y3, "None");
+    } else {
+        for (const auto& perk : collectedPerks) {
+            drawText(col3Center - static_cast<int>(perk.size()) / 2, y3, perk);
+            y3 += 1;
+        }
+    }
+
+    // Подсказка внизу
+    std::string hint = "Press [F] to restart";
+    int hintX = centerX - static_cast<int>(hint.size()) / 2;
+    int hintY = gameAreaStartY + gameHeight - 3;
+    drawText(hintX, hintY, hint, tcod::ColorRGB{200, 200, 200});
 }
 
 void Graphics::drawPlayer(const Entity& player, bool isPoisoned, bool hasShield)
@@ -323,10 +653,20 @@ void Graphics::drawUI(const Entity& player,
                       bool isPlayerPoisoned,
                       bool isPlayerGhostCursed,
                       int shieldTurns,
-                      int shieldWhiteSegments,
+                int shieldWhiteSegments,
                       bool questActive,
                       int questKills,
-                      int questTarget)
+                int questTarget,
+                bool seenRat,
+                bool seenBear,
+                bool seenSnake,
+                bool seenGhost,
+                bool seenCrab,
+                bool seenMedkit,
+                bool seenMaxHP,
+                bool seenShield,
+                bool seenTrap,
+                bool seenQuest)
 {
     char buffer[256];
 
@@ -606,18 +946,19 @@ void Graphics::drawUI(const Entity& player,
     int legendY = legendLineBelowLabelY + 1; // y=4, список начинается отсюда
 
     // Функция для вывода элемента легенды (строго символ в одну колонку, — и текст, ровно)
-    auto printLegendEntry = [&](char symbol, const std::string& text, const tcod::ColorRGB& symColor) {
+    auto printLegendEntry = [&](char symbol, const std::string& text, const tcod::ColorRGB& symColor, bool isKnown) {
         if (legendY >= bottomPanelY) return;
         int entryX = rightPanelStartX;
         // Символ ровно по левому краю панели
         if (console.in_bounds({entryX, legendY})) {
-            console.at({entryX, legendY}).ch = symbol;
+            char drawSym = isKnown ? symbol : '?';
+            console.at({entryX, legendY}).ch = drawSym;
             console.at({entryX, legendY}).fg = symColor;
             console.at({entryX, legendY}).bg = black;
         }
         // ' - ' и текст, строго после символа ровно, без попытки центрирования
         try {
-            std::string rest = " - " + text;
+            std::string rest = " - " + (isKnown ? text : std::string("?"));
             tcod::print(console, {entryX + 1, legendY}, rest.c_str(), legendLabelColor, std::nullopt);
         } catch (const std::exception&) {}
         legendY++;
@@ -625,12 +966,12 @@ void Graphics::drawUI(const Entity& player,
 
     
     // Элементы легенды - Мобы
-    printLegendEntry('@', "Hero", tcod::ColorRGB{100, 200, 255});
-    printLegendEntry('r', "Rat", tcod::ColorRGB{255, 50, 50});
-    printLegendEntry('B', "Bear", tcod::ColorRGB{139, 69, 19});
-    printLegendEntry('S', "Snake", tcod::ColorRGB{60, 130, 60});
-    printLegendEntry('g', "Ghost", tcod::ColorRGB{170, 170, 170});
-    printLegendEntry('C', "Crab", tcod::ColorRGB{255, 140, 0});
+    printLegendEntry('@', "Hero", tcod::ColorRGB{100, 200, 255}, true);
+    printLegendEntry('r', "Rat", tcod::ColorRGB{255, 50, 50}, seenRat);
+    printLegendEntry('B', "Bear", tcod::ColorRGB{139, 69, 19}, seenBear);
+    printLegendEntry('S', "Snake", tcod::ColorRGB{60, 130, 60}, seenSnake);
+    printLegendEntry('g', "Ghost", tcod::ColorRGB{170, 170, 170}, seenGhost);
+    printLegendEntry('C', "Crab", tcod::ColorRGB{255, 140, 0}, seenCrab);
     
     // Строка тире после мобов
     for (int x = 0; x < rightPanelWidth; ++x) {
@@ -643,9 +984,9 @@ void Graphics::drawUI(const Entity& player,
     legendY++;
     
     // Предметы (не квесты!)
-    printLegendEntry('$', "Medkit", tcod::ColorRGB{255, 255, 0});
-    printLegendEntry('+', "Max HP", tcod::ColorRGB{0, 204, 0});
-    printLegendEntry('O', "Shield", tcod::ColorRGB{255, 255, 255});
+    printLegendEntry('$', "Medkit", tcod::ColorRGB{255, 255, 0}, seenMedkit);
+    printLegendEntry('+', "Max HP", tcod::ColorRGB{0, 204, 0}, seenMaxHP);
+    printLegendEntry('O', "Shield", tcod::ColorRGB{255, 255, 255}, seenShield);
     
     // Строка тире после предметов
     for (int x = 0; x < rightPanelWidth; ++x) {
@@ -658,8 +999,8 @@ void Graphics::drawUI(const Entity& player,
     legendY++;
     
     // Другие элементы (не мобы и не предметы)
-    printLegendEntry('.', "Trap", tcod::ColorRGB{40, 40, 40});
-    printLegendEntry('#', "Stair", tcod::ColorRGB{200, 200, 200});
+    printLegendEntry('#', "Stair", tcod::ColorRGB{200, 200, 200}, true);
+    printLegendEntry('.', "Trap", tcod::ColorRGB{40, 40, 40}, seenTrap);
     
     // === НИЖНЯЯ ПАНЕЛЬ ===
     const tcod::ColorRGB bottomPanelColor{200, 200, 200};
@@ -727,7 +1068,7 @@ void Graphics::drawUI(const Entity& player,
     int floorLabelX = rightPanelStartX + (rightPanelWidth - static_cast<int>(floorLabel.size())) / 2;
     try {
         tcod::print(console, {floorLabelX, floorBlockTop + 1}, floorLabel.c_str(), bottomPanelColor, std::nullopt);
-    } catch (const std::exception&) {}
+        } catch (const std::exception&) {}
     // линия после подписи Floor
     for (int x = 0; x < rightPanelWidth; ++x) {
         if (console.in_bounds({rightPanelStartX + x, floorBlockTop + 2})) {
@@ -740,7 +1081,7 @@ void Graphics::drawUI(const Entity& player,
     int floorLevelX = rightPanelStartX + (rightPanelWidth - static_cast<int>(floorLevel.size())) / 2;
     try {
         tcod::print(console, {floorLevelX, floorBlockTop + 3}, floorLevel.c_str(), bottomPanelColor, std::nullopt);
-    } catch (const std::exception&) {}
+        } catch (const std::exception&) {}
     // новая нижняя линия (легко двигается и совпадает с controlBottom)
     for (int x = 0; x < rightPanelWidth; ++x) {
         if (console.in_bounds({rightPanelStartX + x, floorBlockTop + 4})) {
@@ -835,10 +1176,21 @@ bool Graphics::getInput(int& key)
                 return true;
             }
             
-            // Буквы (только если не зажаты модификаторы)
+            // Буквы и цифры (только если не зажаты модификаторы)
             if ((mod & (KMOD_CTRL | KMOD_ALT | KMOD_GUI)) == 0) {
                 if (sym >= SDLK_a && sym <= SDLK_z) {
-                    key = static_cast<int>(sym); // 'a'-'z'
+                    // SDL использует только строчные коды для букв
+                    // Если зажат Shift, преобразуем в заглавную букву
+                    if (mod & KMOD_SHIFT) {
+                        key = 'A' + (sym - SDLK_a); // Преобразуем в заглавную ('A'-'Z')
+                    } else {
+                        key = static_cast<int>(sym); // SDLK_a = 97 = 'a', SDLK_b = 98 = 'b' и т.д.
+                    }
+                    return true;
+                }
+                // Обрабатываем цифры 0-9 (явно преобразуем в символы для надёжности)
+                if (sym >= SDLK_0 && sym <= SDLK_9) {
+                    key = '0' + (sym - SDLK_0); // Гарантируем символ '0'-'9'
                     return true;
                 }
             }
@@ -848,15 +1200,16 @@ bool Graphics::getInput(int& key)
     // Также проверяем через libtcod (на случай если SDL не поймал)
     TCOD_key_t k = TCOD_console_check_for_keypress(TCOD_KEY_PRESSED);
     if (k.vk != TCODK_NONE) {
-        if (k.vk == TCODK_F11) {
-            key = TCODK_F11;
-            return true;
-        }
-        if (k.c != 0) {
-            key = k.c;
-            return true;
-        }
-        key = k.vk;
+    if (k.vk == TCODK_F11) {
+        key = TCODK_F11;
+        return true;
+    }
+    if (k.c != 0) {
+            // Преобразуем символ в нижний регистр для единообразия ('F' -> 'f')
+            key = (k.c >= 'A' && k.c <= 'Z') ? (k.c + 32) : k.c;
+        return true;
+    }
+    key = k.vk;
         return true;
     }
     

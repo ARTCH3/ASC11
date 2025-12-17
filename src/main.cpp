@@ -31,11 +31,90 @@ int main()
 
     // Основной игровой цикл
     while (game.isRunning) {
+        // Если активен экран смерти — рисуем его поверх игры и обрабатываем ввод
+        if (game.isDeathScreenActive) {
+            // Рисуем обычный игровой экран (карту, UI панели и т.д.)
+            graphics.clearScreen();
+            
+            // Пересчитываем FOV для отображения карты
+            const float FOV_RADIUS_MULTIPLIER = 0.7f; // FOV будет 70% от визуального радиуса факела
+            int fovRadius = static_cast<int>(game.torchRadius * FOV_RADIUS_MULTIPLIER);
+            if (fovRadius < 1) fovRadius = 1;
+            game.map.computeFOV(game.player.pos.x, game.player.pos.y, fovRadius, true);
+            
+            // Рисуем карту
+            bool showExitHint = false;
+            std::vector<std::pair<int, int>> fireflyPositions;
+            graphics.drawMap(game.map, game.player.pos.x, game.player.pos.y, game.torchRadius, showExitHint, fireflyPositions);
+            
+            // Рисуем UI панели
+            graphics.drawUI(game.player,
+                           game.enemies,
+                           game.level,
+                           game.map,
+                           game.isPlayerPoisoned,
+                           game.isPlayerGhostCursed,
+                           game.shieldTurns,
+                           game.shieldWhiteSegments,
+                           game.questActive,
+                           game.questKills,
+                           game.questTarget,
+                           game.seenRat,
+                           game.seenBear,
+                           game.seenSnake,
+                           game.seenGhost,
+                           game.seenCrab,
+                           game.seenMedkit,
+                           game.seenMaxHP,
+                           game.seenShield,
+                           game.seenTrap,
+                           game.seenQuest);
+            
+            // Рисуем экран смерти поверх всего
+            graphics.drawDeathScreen(game.level,
+                                     game.killsRat, game.killsBear, game.killsSnake, game.killsGhost, game.killsCrab,
+                                     game.itemsMedkit, game.itemsMaxHP, game.itemsShield, game.itemsTrap, game.itemsQuest,
+                                     game.collectedPerks);
+            graphics.refreshScreen();
+            
+            // Обрабатываем ввод
+            int key = 0;
+            if (graphics.getInput(key)) {
+                // Проверяем и F (строчную), и ESC (для совместимости)
+                if (key == 'f' || key == 'F' || key == TCODK_ESCAPE || key == 27) {
+                    game.restartGame();
+                }
+            }
+            continue; // Пропускаем остальной цикл
+        }
+        
         // Очищаем экран
         graphics.clearScreen();
+        
+        // Пересчитываем FOV каждый кадр с учетом текущего радиуса факела игрока
+        // <<< ДЛЯ ИЗМЕНЕНИЯ РАДИУСА FOV ОТНОСИТЕЛЬНО ФАКЕЛА: измени множитель здесь (меньше = меньше радиус FOV) >>>
+        const float FOV_RADIUS_MULTIPLIER = 0.7f; // FOV будет 70% от визуального радиуса факела
+        int fovRadius = static_cast<int>(game.torchRadius * FOV_RADIUS_MULTIPLIER);
+        if (fovRadius < 1) fovRadius = 1; // Минимум 1
+        game.map.computeFOV(game.player.pos.x, game.player.pos.y, fovRadius, true);
+        
+        // Также добавляем видимость от каждого светлячка (используем addFOV, чтобы не перезаписать FOV игрока)
+        if (game.perkFireflyEnabled && !game.fireflies.empty()) {
+            const int FIREFLY_TORCH_RADIUS = 1; // Радиус факела светлячка (измени здесь для настройки)
+            for (const auto& firefly : game.fireflies) {
+                // Используем addFOV вместо computeFOV, чтобы не перезаписать FOV игрока
+                game.map.addFOV(firefly.x, firefly.y, FIREFLY_TORCH_RADIUS, true);
+            }
+        }
 
         // Рисуем карту (с учетом FOV и факела)
-        graphics.drawMap(game.map, game.player.pos.x, game.player.pos.y, game.torchRadius);
+        bool showExitHint = (game.perkShowExitFirst3Steps && game.stepsOnCurrentLevel <= 3) || game.showExitBecauseCleared;
+        // Собираем позиции светлячков для передачи в drawMap
+        std::vector<std::pair<int, int>> fireflyPositions;
+        for (const auto& firefly : game.fireflies) {
+            fireflyPositions.push_back({firefly.x, firefly.y});
+        }
+        graphics.drawMap(game.map, game.player.pos.x, game.player.pos.y, game.torchRadius, showExitHint, fireflyPositions);
 
         // Рисуем врагов (только если они видны)
         for (const auto& enemy : game.enemies) {
@@ -77,7 +156,17 @@ int main()
                         game.shieldWhiteSegments,
                         game.questActive,
                         game.questKills,
-                        game.questTarget);
+                        game.questTarget,
+                        game.seenRat,
+                        game.seenBear,
+                        game.seenSnake,
+                        game.seenGhost,
+                        game.seenCrab,
+                        game.seenMedkit,
+                        game.seenMaxHP,
+                        game.seenShield,
+                        game.seenTrap,
+                        game.seenQuest);
 
         // Проверяем наведение мыши и отображаем названия
         int mouseMapX, mouseMapY;
@@ -119,8 +208,14 @@ int main()
             // Проверяем лестницу
             if (game.map.isExit(mouseMapX, mouseMapY) &&
                 game.map.isVisible(mouseMapX, mouseMapY)) {
-                graphics.drawHoverName(mouseMapX, mouseMapY, "Exit", tcod::ColorRGB{200, 200, 200});
+                graphics.drawHoverName(mouseMapX, mouseMapY, "Stair", tcod::ColorRGB{200, 200, 200});
             }
+        }
+
+        // Если игрок стоит на лестнице и уже вошёл в "экран выбора" — рисуем поверх центральной части
+        // специальный чёрный оверлей с тремя вариантами 1/2/3.
+        if (game.isPerkChoiceActive) {
+            graphics.drawLevelChoiceMenu(game.perkChoiceVariant1, game.perkChoiceVariant2, game.perkChoiceVariant3);
         }
 
         // Обновляем экран
@@ -129,11 +224,22 @@ int main()
         // Обрабатываем ввод
         int key = 0;
         if (graphics.getInput(key)) {
-            // Проверяем F11 для полноэкранного режима
-            if (key == TCODK_F11) {
-                graphics.toggleFullscreen();
+            // Если активен экран выбора перка – обрабатываем только клавиши 1/2/3.
+            if (game.isPerkChoiceActive) {
+                if (key == '1') {
+                    game.applyLevelChoice(1);
+                } else if (key == '2') {
+                    game.applyLevelChoice(2);
+                } else if (key == '3') {
+                    game.applyLevelChoice(3);
+                }
             } else {
-                handleInput(game, key);
+                // Обычный режим игры
+                if (key == TCODK_F11) {
+                    graphics.toggleFullscreen();
+                } else {
+                    handleInput(game, key);
+                }
             }
         }
     }

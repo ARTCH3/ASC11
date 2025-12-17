@@ -19,7 +19,7 @@ Map::Map()
 
 Map::~Map() = default;
 
-void Map::generate()
+void Map::generate(int currentLevel)
 {
     // --- Новый генератор комнат и коридоров для более логичной карты ---
     struct Room {
@@ -310,12 +310,39 @@ void Map::generate()
     }
 
     // Добавим несколько предметов на случайные свободные клетки.
+    // На первом уровне спавнится только один случайный предмет (Medkit или MaxHP).
+    if (currentLevel == 1) {
+        // Выбираем случайный тип предмета: 0 = Medkit, 1 = MaxHP
+        int itemType = std::rand() % 2;
+        if (itemType == 0) {
+            // Спавним одну аптечку
+            for (int attempt = 0; attempt < 100; ++attempt) {
+                int rx = std::rand() % WIDTH;
+                int ry = std::rand() % HEIGHT;
+                if (cells[ry][rx] == SYM_FLOOR) {
+                    addHealItem(rx, ry, 5); // Восстанавливает 5 здоровья
+                    break;
+                }
+            }
+        } else {
+            // Спавним один MaxHP предмет
+            for (int attempt = 0; attempt < 100; ++attempt) {
+                int rx = std::rand() % WIDTH;
+                int ry = std::rand() % HEIGHT;
+                if (cells[ry][rx] == SYM_FLOOR) {
+                    int bonus = (std::rand() % 5) + 1; // Бонус от 1 до 5
+                    addMaxHealthItem(rx, ry, bonus);
+                    break;
+                }
+            }
+        }
+    } else {
+        // На остальных уровнях спавнятся обычные предметы
     const int healItemsToSpawn = 3;
     for (int i = 0; i < healItemsToSpawn; ++i) {
         for (int attempt = 0; attempt < 100; ++attempt) {
             int rx = std::rand() % WIDTH;
             int ry = std::rand() % HEIGHT;
-
             if (cells[ry][rx] == SYM_FLOOR) {
                 addHealItem(rx, ry, 5); // Восстанавливает 5 здоровья
                 break;
@@ -329,12 +356,12 @@ void Map::generate()
         for (int attempt = 0; attempt < 100; ++attempt) {
             int rx = std::rand() % WIDTH;
             int ry = std::rand() % HEIGHT;
-
             if (cells[ry][rx] == SYM_FLOOR) {
                 // Бонус от 1 до 5
                 int bonus = (std::rand() % 5) + 1;
                 addMaxHealthItem(rx, ry, bonus);
                 break;
+                }
             }
         }
     }
@@ -415,6 +442,23 @@ void Map::computeFOV(int playerX, int playerY, int radius, bool lightWalls)
     }
 }
 
+// Добавляет FOV от дополнительного источника света (не перезаписывает существующий FOV)
+void Map::addFOV(int sourceX, int sourceY, int radius, bool lightWalls)
+{
+    // Вычисляем FOV с помощью алгоритма libtcod (не очищаем существующий массив visible)
+    fovMap.computeFov(sourceX, sourceY, radius, lightWalls, FOV_RESTRICTIVE);
+    
+    // Добавляем видимые клетки к существующим (не перезаписываем)
+    for (int y = 0; y < HEIGHT; ++y) {
+        for (int x = 0; x < WIDTH; ++x) {
+            if (fovMap.isInFov(x, y)) {
+                visible[y][x] = true; // Добавляем видимость, не перезаписываем
+                explored[y][x] = true; // Если видим, то и исследовали
+            }
+        }
+    }
+}
+
 void Map::revealAll()
 {
     for (int y = 0; y < HEIGHT; ++y) {
@@ -439,6 +483,24 @@ bool Map::isExplored(int x, int y) const
         return false;
     }
     return explored[y][x];
+}
+
+// Отмечаем все клетки в радиусе как \"исследованные\" (explored = true).
+void Map::revealCircle(int cx, int cy, int radius)
+{
+    int r2 = radius * radius;
+    for (int y = cy - radius; y <= cy + radius; ++y) {
+        if (y < 0 || y >= HEIGHT) continue;
+        for (int x = cx - radius; x <= cx + radius; ++x) {
+            if (x < 0 || x >= WIDTH) continue;
+            int dx = x - cx;
+            int dy = y - cy;
+            if (dx * dx + dy * dy <= r2) {
+                explored[y][x] = true;
+                visible[y][x] = true; // Также делаем видимыми (для светлячков)
+            }
+        }
+    }
 }
 
 void Map::addItem(int x, int y, int healAmount, int maxHealthBoost, char symbol)

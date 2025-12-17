@@ -57,7 +57,7 @@ public:
              int bottomPanelHeight);
     ~Graphics();
 
-    void drawMap(const Map& map, int playerX, int playerY, int torchRadius);
+    void drawMap(const Map& map, int playerX, int playerY, int torchRadius, bool showExitHint, const std::vector<std::pair<int, int>>& fireflyPositions = {});
     void drawEntity(const Entity& entity);
     // Специальный метод для игрока с динамическим цветом.
     // isPoisoned — отравление, hasShield — активный щит (игрок подсвечивается белым).
@@ -73,7 +73,18 @@ public:
                 int shieldWhiteSegments,
                 bool questActive,
                 int questKills,
-                int questTarget);
+                int questTarget,
+                // Флаги, видел ли игрок этих мобов/предметы (для Legend: ? - ???)
+                bool seenRat,
+                bool seenBear,
+                bool seenSnake,
+                bool seenGhost,
+                bool seenCrab,
+                bool seenMedkit,
+                bool seenMaxHP,
+                bool seenShield,
+                bool seenTrap,
+                bool seenQuest);
     void refreshScreen();
     void clearScreen();
     // Читает одну клавишу. Возвращает true если что-то нажали.
@@ -84,6 +95,13 @@ public:
     bool getMousePosition(int& mapX, int& mapY);
     // Рисует название справа от символа при наведении мыши
     void drawHoverName(int mapX, int mapY, const std::string& name, const tcod::ColorRGB& color);
+    // Рисует экран выбора перка при переходе на следующий уровень
+    void drawLevelChoiceMenu(int variant1, int variant2, int variant3);
+    // Рисует экран смерти с статистикой
+    void drawDeathScreen(int level,
+                         int killsRat, int killsBear, int killsSnake, int killsGhost, int killsCrab,
+                         int itemsMedkit, int itemsMaxHP, int itemsShield, int itemsTrap, int itemsQuest,
+                         const std::vector<std::string>& collectedPerks);
     // Переключение полноэкранного режима
     void toggleFullscreen();
 };

@@ -63,14 +63,27 @@ GameState::GameState()
       player(5, 5, SYM_PLAYER, TCOD_ColorRGB{100, 200, 255}),
       enemies(),
       isRunning(true),
-      torchRadius(8), // Радиус факела
+      torchRadius(8), // Базовый радиус факела
       level(1),       // Начинаем с уровня 1
       shieldTurns(0), // Сколько синих делений щита осталось
       shieldWhiteSegments(0),
       visionTurns(0), // Количество ходов с полной подсветкой
       questActive(false),
       questTarget(0),
-      questKills(0)
+      questKills(0),
+      isPerkChoiceActive(false),
+      perkBonusRats(0),
+      perkBonusHeals(0),
+      perkBonusShields(0),
+      perkFireflyEnabled(false),
+      perkShowExitFirst3Steps(false),
+      stepsOnCurrentLevel(0),
+      perkBearPoisonNextLevel(false),
+      perkBearPoisonActiveThisLevel(false),
+      perkSnakesNextLevel(0),
+      perkExtraMaxHpItemsNextLevel(0),
+      perkTorchRadiusDeltaNextLevel(0),
+      showExitBecauseCleared(false)
 {
     // Инициализируем генератор случайных чисел один раз.
     std::srand(static_cast<unsigned>(std::time(nullptr)));
@@ -221,8 +234,8 @@ void GameState::processCombat()
         // Если враг на той же клетке, что и игрок
         if (enemy.pos.x == player.pos.x &&
             enemy.pos.y == player.pos.y) {
-            // Игрок атакует врага.
-            // Змея умирает от одного удара, остальные враги получают обычный урон.
+        // Игрок атакует врага.
+        // Змея умирает от одного удара, остальные враги получают обычный урон.
             bool wasAlive = enemy.isAlive();
             if (enemy.symbol == SYM_SNAKE) {
                 enemy.health = 0;
@@ -233,6 +246,16 @@ void GameState::processCombat()
             if (questActive && wasAlive && !enemy.isAlive()) {
                 questKills++;
             }
+        }
+
+        // Помечаем, что этот тип врага уже \"встречен\" (для Legend),
+        // если он находится в пределах видимости игрока.
+        if (map.isVisible(enemy.pos.x, enemy.pos.y)) {
+            if (enemy.symbol == SYM_ENEMY) seenRat = true;
+            else if (enemy.symbol == SYM_BEAR) seenBear = true;
+            else if (enemy.symbol == SYM_SNAKE) seenSnake = true;
+            else if (enemy.symbol == SYM_GHOST) seenGhost = true;
+            else if (enemy.symbol == SYM_CRAB) seenCrab = true;
         }
 
         // Если враг рядом с игроком, он атакует.
@@ -300,10 +323,19 @@ void GameState::processCombat()
                     }
                 }
             } else {
-                // Обычная атака
-                int remaining = applyShieldHit(enemy.damage);
-                if (remaining > 0) {
-                    player.takeDamage(remaining);
+                // Обычная атака (с учётом возможного перка на "ядовитых" медведей).
+                if (enemy.symbol == SYM_BEAR && perkBearPoisonActiveThisLevel) {
+                    // Медведь с мутацией отравления: укус работает как у змеи.
+                    // Игнорируем щит, наносим небольшой прямой урон и вешаем яд.
+                    int instantDamage = std::max(1, player.maxHealth / 100);
+                    player.takeDamage(instantDamage);
+                    applyPoisonToPlayer(5, 10);
+                } else {
+                    // Обычный урон проходит сначала по щиту, затем по здоровью.
+                    int remaining = applyShieldHit(enemy.damage);
+                    if (remaining > 0) {
+                        player.takeDamage(remaining);
+                    }
                 }
             }
             
@@ -370,12 +402,31 @@ void GameState::processCombat()
         }
     }
 
-    // Удаляем мертвых врагов
-    enemies.erase(
-        std::remove_if(enemies.begin(), enemies.end(),
-                       [](const Entity& e) { return !e.isAlive(); }),
-        enemies.end()
-    );
+    // Удаляем мертвых врагов и считаем статистику убийств
+    // Проверяем: если после этого хода врагов не останется – показываем лестницу
+    int enemiesAlive = 0;
+    for (auto it = enemies.begin(); it != enemies.end(); ) {
+        if (!it->isAlive()) {
+            // Подсчитываем убийства по типам мобов
+            if (it->symbol == SYM_ENEMY) killsRat++;
+            else if (it->symbol == SYM_BEAR) killsBear++;
+            else if (it->symbol == SYM_SNAKE) killsSnake++;
+            else if (it->symbol == SYM_GHOST) killsGhost++;
+            else if (it->symbol == SYM_CRAB) killsCrab++;
+            it = enemies.erase(it);
+        } else {
+            ++it;
+            enemiesAlive++;
+        }
+    }
+    // Если больше нет живых врагов и лестница еще не была раскрыта этим способом, включаем флаг.
+    if (enemiesAlive == 0 && !showExitBecauseCleared) {
+        showExitBecauseCleared = true;
+    }
+    // Если враги снова появились (но такого быть не должно), флаг сбрасываем (на всякий случай)
+    if (enemiesAlive > 0 && showExitBecauseCleared) {
+        showExitBecauseCleared = false;
+    }
 
     // Проверяем, не умер ли игрок
     if (!player.isAlive()) {
@@ -383,8 +434,8 @@ void GameState::processCombat()
         questActive = false;
         questKills = 0;
         questTarget = 0;
-        // Вместо выхода из игры, перезапускаем её
-        restartGame();
+        // Показываем экран смерти вместо мгновенного рестарта
+        isDeathScreenActive = true;
     }
 }
 
@@ -412,9 +463,12 @@ void GameState::updatePoison()
         poisonTurnsRemaining = 0;
     }
 
-    // Если яд добил игрока — перезапускаем игру так же, как и при обычной смерти.
+    // Если яд добил игрока — показываем экран смерти.
     if (!player.isAlive()) {
-        restartGame();
+        questActive = false;
+        questKills = 0;
+        questTarget = 0;
+        isDeathScreenActive = true;
     }
 }
 
@@ -555,9 +609,12 @@ void GameState::updateCrabInversion()
         break;
     }
 
-    // Если урон от отцепления убил игрока — перезапускаем игру.
+    // Если урон от отцепления убил игрока — показываем экран смерти.
     if (!player.isAlive()) {
-        restartGame();
+        questActive = false;
+        questKills = 0;
+        questTarget = 0;
+        isDeathScreenActive = true;
     }
 }
 
@@ -635,6 +692,20 @@ void GameState::processItems()
                 questKills = 0;
                 questTarget = 5 + (std::rand() % 6); // от 5 до 10
             }
+
+            // Подсчитываем собранные предметы для статистики
+            if (item.symbol == SYM_ITEM) itemsMedkit++;
+            else if (item.symbol == SYM_MAX_HP) itemsMaxHP++;
+            else if (item.symbol == SYM_SHIELD) itemsShield++;
+            else if (item.symbol == SYM_TRAP) itemsTrap++;
+            else if (item.symbol == SYM_QUEST) itemsQuest++;
+
+            // Помечаем, что игрок уже встречал этот тип предмета (для Legend)
+            if (item.symbol == SYM_ITEM) seenMedkit = true;
+            else if (item.symbol == SYM_MAX_HP) seenMaxHP = true;
+            else if (item.symbol == SYM_SHIELD) seenShield = true;
+            else if (item.symbol == SYM_TRAP) seenTrap = true;
+            else if (item.symbol == SYM_QUEST) seenQuest = true;
 
             // Убираем предмет
             map.removeItem(i);
@@ -789,6 +860,8 @@ void handleInput(GameState& state, int key)
             // Перемещаемся, если клетка не стена или это выход
             if (state.map.isWalkable(newX, newY) || state.map.isExit(newX, newY)) {
                 state.player.move(dx, dy);
+                // Считаем шаги на уровне (для будущих эффектов, вроде "покажи лестницу первые 3 хода").
+                state.stepsOnCurrentLevel++;
 
                 // Если на игроке "сидит" краб, он должен оставаться на тех же координатах,
                 // что и игрок, пока не отцепится.
@@ -823,6 +896,64 @@ void handleInput(GameState& state, int key)
     // Обновляем врагов
     state.updateEnemies();
 
+    // Обновляем положение светлячков и раскрываем вокруг них туман войны.
+    // Также проверяем столкновения с мобами (светлячки умирают при столкновении).
+    if (state.perkFireflyEnabled && !state.fireflies.empty()) {
+        // Радиус факела светлячка (меньше чем у игрока)
+        const int FIREFLY_TORCH_RADIUS = 1; // Маленький радиус факела для светлячка (измени здесь для настройки)
+        
+        // Обрабатываем каждого светлячка
+        for (size_t i = state.fireflies.size(); i > 0; --i) {
+            size_t idx = i - 1;
+            GameState::Firefly& fly = state.fireflies[idx];
+            
+            // Проверяем столкновение с мобами - если моб наступил на светлячка, он умирает
+            bool killed = false;
+            for (const auto& enemy : state.enemies) {
+                if (enemy.isAlive() && enemy.pos.x == fly.x && enemy.pos.y == fly.y) {
+                    killed = true;
+                    break;
+                }
+            }
+            if (killed) {
+                // Удаляем светлячка
+                state.fireflies.erase(state.fireflies.begin() + idx);
+                continue;
+            }
+            
+            // Светлячок пытается случайно сдвинуться на одну клетку в одном из 8 направлений.
+            const int dirs[8][2] = {
+                { 1, 0}, {-1, 0}, {0, 1}, {0,-1},
+                { 1, 1}, { 1,-1}, {-1, 1}, {-1,-1}
+            };
+            for (int attempt = 0; attempt < 8; ++attempt) {
+                int dirIdx = std::rand() % 8;
+                int nx = fly.x + dirs[dirIdx][0];
+                int ny = fly.y + dirs[dirIdx][1];
+                if (nx < 0 || nx >= Map::WIDTH || ny < 0 || ny >= Map::HEIGHT) continue;
+                // Летаем только по проходимым клеткам-полу.
+                if (!state.map.isWalkable(nx, ny)) continue;
+                // Не садимся на игрока.
+                if (nx == state.player.pos.x && ny == state.player.pos.y) continue;
+                // Не садимся на других светлячков
+                bool occupiedByFirefly = false;
+                for (const auto& other : state.fireflies) {
+                    if (other.x == nx && other.y == ny) {
+                        occupiedByFirefly = true;
+                        break;
+                    }
+                }
+                if (occupiedByFirefly) continue;
+                fly.x = nx;
+                fly.y = ny;
+                break;
+            }
+            // Каждый ход светлячок открывает туман войны с радиусом факела (как у игрока, но меньше)
+            // Используем revealCircle только для отметки как исследованных (FOV будет добавлен в main.cpp через addFOV)
+            state.map.revealCircle(fly.x, fly.y, FIREFLY_TORCH_RADIUS);
+        }
+    }
+
     // Обрабатываем бой еще раз (на случай, если враг переместился на игрока)
     state.processCombat();
 
@@ -842,21 +973,55 @@ void handleInput(GameState& state, int key)
         // Эффект действует только до следующего хода
         state.visionTurns--;
     } else {
-        // Обычный FOV с учетом стен
-        state.map.computeFOV(state.player.pos.x, state.player.pos.y, state.torchRadius, true);
+        // Обычный FOV с учетом стен (уменьшенный радиус относительно визуального факела)
+        // <<< ДЛЯ ИЗМЕНЕНИЯ РАДИУСА FOV ОТНОСИТЕЛЬНО ФАКЕЛА: измени множитель здесь >>>
+        const float FOV_RADIUS_MULTIPLIER = 0.7f; // FOV будет 70% от визуального радиуса факела
+        int fovRadius = static_cast<int>(state.torchRadius * FOV_RADIUS_MULTIPLIER);
+        if (fovRadius < 1) fovRadius = 1; // Минимум 1
+        state.map.computeFOV(state.player.pos.x, state.player.pos.y, fovRadius, true);
+        
+        // Добавляем FOV от светлячков (если они есть)
+        if (state.perkFireflyEnabled && !state.fireflies.empty()) {
+            const int FIREFLY_TORCH_RADIUS = 1; // Радиус факела светлячка (измени здесь для настройки)
+            for (const auto& firefly : state.fireflies) {
+                state.map.addFOV(firefly.x, firefly.y, FIREFLY_TORCH_RADIUS, true);
+            }
+        }
     }
 }
 
 // Генерация нового уровня
 void GameState::generateNewLevel()
 {
+    // Сохраняем выживших светлячков перед очисткой карты
+    std::vector<Firefly> survivingFireflies = fireflies;
+    
     // Очищаем карту и врагов
     map.items.clear();
     enemies.clear();
     
-    // Генерируем новую карту
-    map.generate();
+    // Генерируем новую карту (передаем уровень для контроля спавна предметов на первом уровне)
+    map.generate(level);
     
+    // Счётчик шагов на уровне и временные эффекты "только на этот этаж"
+    stepsOnCurrentLevel = 0;
+    showExitBecauseCleared = false;
+    // Активируем ядовитых медведей, если перк был выбран "на следующий уровень".
+    perkBearPoisonActiveThisLevel = perkBearPoisonNextLevel;
+    perkBearPoisonNextLevel = false;
+
+    // На каждом новом уровне пересчитываем радиус факела:
+    // берём базовое значение (чуть больше чем у светлячка) и добавляем временный сдвиг, если он есть.
+    // <<< ДЛЯ ИЗМЕНЕНИЯ НАЧАЛЬНОГО РАДИУСА ФАКЕЛА: измени здесь (светлячок = 1) >>>
+    torchRadius = 3; // Уменьшен с 8 до 3 (чуть больше чем у светлячка = 1)
+    if (perkTorchRadiusDeltaNextLevel != 0) {
+        torchRadius += perkTorchRadiusDeltaNextLevel;
+        if (torchRadius < 2) {
+            torchRadius = 2; // Не даём факелу стать совсем маленьким.
+        }
+        perkTorchRadiusDeltaNextLevel = 0; // Сдвиг отработал только для этого уровня.
+    }
+
     // Размещаем игрока в безопасном месте с выходами (не в коробке!)
     // Ищем проходимую клетку с минимум 2 выходами В ЦЕНТРЕ КАРТЫ (или очень рядом)
     bool playerPlaced = false;
@@ -908,9 +1073,65 @@ void GameState::generateNewLevel()
     // На новом уровне всегда начинаем без активного эффекта краба.
     isPlayerControlsInverted = false;
     crabInversionTurnsRemaining = 0;
+
+    // Если перк светлячка активирован — создаём новые светлячки (накапливаются при каждом выборе перка).
+    // На первом уровне создаём одного светлячка, на последующих добавляем ещё одного при выборе перка.
+    // Здесь мы создаём светлячков только при генерации нового уровня (они уже были добавлены при выборе перка).
+    // Но нужно создать первого светлячка, если перк был выбран, но светлячков ещё нет.
+    if (perkFireflyEnabled && fireflies.empty()) {
+        // Пробуем найти проходимую клетку пола для первого светлячка.
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int fx = std::rand() % Map::WIDTH;
+            int fy = std::rand() % Map::HEIGHT;
+            if (map.getCell(fx, fy) == SYM_FLOOR &&
+                !(fx == player.pos.x && fy == player.pos.y) &&
+                !map.isExit(fx, fy)) {
+                fireflies.push_back(GameState::Firefly(fx, fy));
+                // Сразу открываем туман войны вокруг светлячка с радиусом факела
+                const int FIREFLY_TORCH_RADIUS = 2;
+                map.computeFOV(fx, fy, FIREFLY_TORCH_RADIUS, true);
+                break;
+            }
+        }
+    }
     
+    // На первом уровне выбираем один случайный тип врага и один случайный тип "сложного" предмета.
+    int enemyChoiceLevel1 = -1; // 0 - Rat, 1 - Bear, 2 - Snake, 3 - Ghost, 4 - Crab
+    int itemChoiceLevel1 = -1;  // 0 - Trap, 1 - Shield, 2 - Quest
+    if (level == 1) {
+        enemyChoiceLevel1 = std::rand() % 5;
+        itemChoiceLevel1 = std::rand() % 3;
+        // Разблокируем выбранные моб и предмет на первом уровне
+        if (enemyChoiceLevel1 == 0) unlockedRat = true;
+        else if (enemyChoiceLevel1 == 1) unlockedBear = true;
+        else if (enemyChoiceLevel1 == 2) unlockedSnake = true;
+        else if (enemyChoiceLevel1 == 3) unlockedGhost = true;
+        else if (enemyChoiceLevel1 == 4) unlockedCrab = true;
+        
+        if (itemChoiceLevel1 == 0) unlockedTrap = true;
+        else if (itemChoiceLevel1 == 1) unlockedShield = true;
+        else if (itemChoiceLevel1 == 2) unlockedQuest = true;
+        
+        // На первом уровне также разблокируем базовые предметы (Medkit или MaxHP - один случайный)
+        // Это уже обрабатывается в Map::generate(), но нужно разблокировать оба типа для будущих уровней
+        unlockedMedkit = true; // Базовые предметы всегда доступны после первого уровня
+        unlockedMaxHP = true;
+    }
+
     // Создаем несколько крыс на случайных позициях
-    const int ratsToSpawn = 5 + level; // Больше крыс на более высоких уровнях
+    // Базовое количество + бонус от перков (накопительный, "навсегда").
+    // Спавним только если разблокированы
+    int ratsToSpawn = 0;
+    if (unlockedRat) {
+        if (level == 1) {
+            // На первом уровне случайное количество от 3 до 7
+            if (enemyChoiceLevel1 == 0) {
+                ratsToSpawn = 3 + (std::rand() % 5); // 3-7 крыс
+            }
+        } else {
+            ratsToSpawn = 5 + level + perkBonusRats;
+        }
+    }
     for (int i = 0; i < ratsToSpawn; ++i) {
         for (int attempt = 0; attempt < 100; ++attempt) {
             int rx = std::rand() % Map::WIDTH;
@@ -931,7 +1152,18 @@ void GameState::generateNewLevel()
     }
 
     // Создаем медведей на случайных позициях
-    const int bearsToSpawn = 2 + level / 2; // Медведей меньше, чем крыс
+    // Спавним только если разблокированы
+    int bearsToSpawn = 0;
+    if (unlockedBear) {
+        if (level == 1) {
+            // На первом уровне случайное количество от 1 до 3
+            if (enemyChoiceLevel1 == 1) {
+                bearsToSpawn = 1 + (std::rand() % 3); // 1-3 медведя
+            }
+        } else {
+            bearsToSpawn = 2 + level / 2; // Медведей меньше, чем крыс
+        }
+    }
     for (int i = 0; i < bearsToSpawn; ++i) {
         for (int attempt = 0; attempt < 100; ++attempt) {
             int bx = std::rand() % Map::WIDTH;
@@ -953,8 +1185,22 @@ void GameState::generateNewLevel()
         }
     }
 
-    // Создаем змей на случайных позициях
-    const int snakesToSpawn = 3 + level / 2; // Змей немного больше, чем медведей
+    // Создаем змей на случайных позициях.
+    // Базовое количество + временный бонус только на текущий уровень.
+    // Спавним только если разблокированы
+    int snakesToSpawn = 0;
+    if (unlockedSnake) {
+        if (level == 1) {
+            // На первом уровне случайное количество от 2 до 4
+            if (enemyChoiceLevel1 == 2) {
+                snakesToSpawn = 2 + (std::rand() % 3); // 2-4 змеи
+            }
+        } else {
+            snakesToSpawn = 3 + level / 2 + perkSnakesNextLevel;
+        }
+    }
+    // Эффект "+змеи" был только на один уровень — обнуляем.
+    perkSnakesNextLevel = 0;
     for (int i = 0; i < snakesToSpawn; ++i) {
         for (int attempt = 0; attempt < 100; ++attempt) {
             int sx = std::rand() % Map::WIDTH;
@@ -979,7 +1225,18 @@ void GameState::generateNewLevel()
     }
 
     // Создаем призраков на случайных позициях
-    const int ghostsToSpawn = 1 + level / 2; // Немного, но они опасные
+    // Спавним только если разблокированы
+    int ghostsToSpawn = 0;
+    if (unlockedGhost) {
+        if (level == 1) {
+            // На первом уровне случайное количество от 1 до 2
+            if (enemyChoiceLevel1 == 3) {
+                ghostsToSpawn = 1 + (std::rand() % 2); // 1-2 призрака
+            }
+        } else {
+            ghostsToSpawn = 1 + level / 2; // Немного, но они опасные
+        }
+    }
     for (int i = 0; i < ghostsToSpawn; ++i) {
         for (int attempt = 0; attempt < 100; ++attempt) {
             int gx = std::rand() % Map::WIDTH;
@@ -1002,7 +1259,18 @@ void GameState::generateNewLevel()
     }
 
     // Создаем крабов на случайных позициях
-    const int crabsToSpawn = 2 + level / 2;
+    // Спавним только если разблокированы
+    int crabsToSpawn = 0;
+    if (unlockedCrab) {
+        if (level == 1) {
+            // На первом уровне случайное количество от 1 до 3
+            if (enemyChoiceLevel1 == 4) {
+                crabsToSpawn = 1 + (std::rand() % 3); // 1-3 краба
+            }
+        } else {
+            crabsToSpawn = 2 + level / 2;
+        }
+    }
     for (int i = 0; i < crabsToSpawn; ++i) {
         for (int attempt = 0; attempt < 100; ++attempt) {
             int cx = std::rand() % Map::WIDTH;
@@ -1022,77 +1290,123 @@ void GameState::generateNewLevel()
         }
     }
 
-    // Спавним призрачные предметы '.' в случайных местах (не больше 5 за карту)
-    const int ghostToSpawn = 1 + (std::rand() % 5); // от 1 до 5 штук
-    for (int i = 0; i < ghostToSpawn; ++i) {
-        for (int attempt = 0; attempt < 200; ++attempt) {
-            int gx = std::rand() % Map::WIDTH;
-            int gy = std::rand() % Map::HEIGHT;
+    // Спавним призрачные предметы '.' в случайных местах (не больше 5 за карту).
+    // Спавним только если разблокированы
+    if (unlockedTrap && (level != 1 || itemChoiceLevel1 == 0)) {
+        const int ghostToSpawn = 1 + (std::rand() % 5); // от 1 до 5 штук
+        for (int i = 0; i < ghostToSpawn; ++i) {
+            for (int attempt = 0; attempt < 200; ++attempt) {
+                int gx = std::rand() % Map::WIDTH;
+                int gy = std::rand() % Map::HEIGHT;
 
-            // Свободная клетка: пол, не игрок, не выход, нет врага и предмета
-            bool occupiedByEnemy = false;
-            for (const auto& e : enemies) {
-                if (e.isAlive() && e.pos.x == gx && e.pos.y == gy) {
-                    occupiedByEnemy = true;
+                // Свободная клетка: пол, не игрок, не выход, нет врага и предмета
+                bool occupiedByEnemy = false;
+                for (const auto& e : enemies) {
+                    if (e.isAlive() && e.pos.x == gx && e.pos.y == gy) {
+                        occupiedByEnemy = true;
+                        break;
+                    }
+                }
+                if (occupiedByEnemy) continue;
+
+                if (map.getCell(gx, gy) == SYM_FLOOR &&
+                    !(gx == player.pos.x && gy == player.pos.y) &&
+                    !map.isExit(gx, gy) &&
+                    map.getItemAt(gx, gy) == nullptr) {
+                    map.addTrapItem(gx, gy);
                     break;
                 }
-            }
-            if (occupiedByEnemy) continue;
-
-            if (map.getCell(gx, gy) == SYM_FLOOR &&
-                !(gx == player.pos.x && gy == player.pos.y) &&
-                !map.isExit(gx, gy) &&
-                map.getItemAt(gx, gy) == nullptr) {
-                map.addTrapItem(gx, gy);
-                break;
             }
         }
     }
 
-    // Спавним предмет-щиты 'O' (до 3 на карту)
-    const int shieldsToSpawn = 3;
-    for (int shield = 0; shield < shieldsToSpawn; ++shield) {
-        for (int attempt = 0; attempt < 200; ++attempt) {
-            int sx = std::rand() % Map::WIDTH;
-            int sy = std::rand() % Map::HEIGHT;
-            bool occupiedByEnemy = false;
-            for (const auto& e : enemies) {
-                if (e.isAlive() && e.pos.x == sx && e.pos.y == sy) {
-                    occupiedByEnemy = true;
+    // Спавним предмет-щиты 'O' (до 3 на карту + бонус за перки)
+    // Спавним только если разблокированы
+    if (unlockedShield && (level != 1 || itemChoiceLevel1 == 1)) {
+        const int shieldsToSpawn = std::max(0, 3 + perkBonusShields);
+        for (int shield = 0; shield < shieldsToSpawn; ++shield) {
+            for (int attempt = 0; attempt < 200; ++attempt) {
+                int sx = std::rand() % Map::WIDTH;
+                int sy = std::rand() % Map::HEIGHT;
+                bool occupiedByEnemy = false;
+                for (const auto& e : enemies) {
+                    if (e.isAlive() && e.pos.x == sx && e.pos.y == sy) {
+                        occupiedByEnemy = true;
+                        break;
+                    }
+                }
+                if (occupiedByEnemy) continue;
+                if (map.getCell(sx, sy) == SYM_FLOOR &&
+                    !(sx == player.pos.x && sy == player.pos.y) &&
+                    !map.isExit(sx, sy) &&
+                    map.getItemAt(sx, sy) == nullptr) {
+                    map.addShieldItem(sx, sy);
                     break;
                 }
-            }
-            if (occupiedByEnemy) continue;
-            if (map.getCell(sx, sy) == SYM_FLOOR &&
-                !(sx == player.pos.x && sy == player.pos.y) &&
-                !map.isExit(sx, sy) &&
-                map.getItemAt(sx, sy) == nullptr) {
-                map.addShieldItem(sx, sy);
-                break;
             }
         }
     }
 
     // Спавним один квестовый предмет '?' (запускает убийство монстров)
-    for (int attempt = 0; attempt < 200; ++attempt) {
-        int qx = std::rand() % Map::WIDTH;
-        int qy = std::rand() % Map::HEIGHT;
-        bool occupiedByEnemy = false;
-        for (const auto& e : enemies) {
-            if (e.isAlive() && e.pos.x == qx && e.pos.y == qy) {
-                occupiedByEnemy = true;
+    // Спавним только если разблокированы
+    if (unlockedQuest && (level != 1 || itemChoiceLevel1 == 2)) {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int qx = std::rand() % Map::WIDTH;
+            int qy = std::rand() % Map::HEIGHT;
+            bool occupiedByEnemy = false;
+            for (const auto& e : enemies) {
+                if (e.isAlive() && e.pos.x == qx && e.pos.y == qy) {
+                    occupiedByEnemy = true;
+                    break;
+                }
+            }
+            if (occupiedByEnemy) continue;
+            if (map.getCell(qx, qy) == SYM_FLOOR &&
+                !(qx == player.pos.x && qy == player.pos.y) &&
+                !map.isExit(qx, qy) &&
+                map.getItemAt(qx, qy) == nullptr) {
+                map.addQuestItem(qx, qy);
                 break;
             }
         }
-        if (occupiedByEnemy) continue;
-        if (map.getCell(qx, qy) == SYM_FLOOR &&
-            !(qx == player.pos.x && qy == player.pos.y) &&
-            !map.isExit(qx, qy) &&
-            map.getItemAt(qx, qy) == nullptr) {
-            map.addQuestItem(qx, qy);
-            break;
+    }
+
+    // Дополнительные аптечки за постоянный перк.
+    for (int extra = 0; extra < perkBonusHeals; ++extra) {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int hx = std::rand() % Map::WIDTH;
+            int hy = std::rand() % Map::HEIGHT;
+
+            if (map.getCell(hx, hy) == SYM_FLOOR &&
+                !(hx == player.pos.x && hy == player.pos.y) &&
+                !map.isExit(hx, hy) &&
+                map.getItemAt(hx, hy) == nullptr) {
+                // Аптечка на 5 HP, как базовые.
+                map.addHealItem(hx, hy, 5);
+                break;
+            }
         }
     }
+
+    // Дополнительные MaxHP‑предметы только на этот уровень.
+    for (int extra = 0; extra < perkExtraMaxHpItemsNextLevel; ++extra) {
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int mx = std::rand() % Map::WIDTH;
+            int my = std::rand() % Map::HEIGHT;
+
+            if (map.getCell(mx, my) == SYM_FLOOR &&
+                !(mx == player.pos.x && my == player.pos.y) &&
+                !map.isExit(mx, my) &&
+                map.getItemAt(mx, my) == nullptr) {
+                int bonus = 1 + (std::rand() % 5); // как в Map::generate
+                map.addMaxHealthItem(mx, my, bonus);
+                break;
+            }
+        }
+    }
+    // Этот бонус действует только на один этаж.
+    perkExtraMaxHpItemsNextLevel = 0;
+
     // Инициализируем FOV
     map.computeFOV(player.pos.x, player.pos.y, torchRadius, true);
 }
@@ -1101,11 +1415,120 @@ void GameState::generateNewLevel()
 bool GameState::checkExit()
 {
     if (map.isExit(player.pos.x, player.pos.y)) {
-        level++;
-        generateNewLevel();
+        // Не сразу переходим на следующий уровень, а показываем экран выбора перка.
+        // Сам переход произойдет после того, как игрок выберет 1, 2 или 3.
+        isPerkChoiceActive = true;
+        // Генерируем случайные варианты модификаторов один раз при активации экрана
+        perkChoiceVariant1 = std::rand() % 6;
+        perkChoiceVariant2 = std::rand() % 6;
+        perkChoiceVariant3 = std::rand() % 6;
         return true;
     }
     return false;
+}
+
+// Применить выбранный перк (1, 2 или 3) и перейти на следующий уровень.
+void GameState::applyLevelChoice(int choiceIndex)
+{
+    // Защита от некорректных значений
+    if (choiceIndex < 1 || choiceIndex > 3) {
+        return;
+    }
+
+    if (choiceIndex == 1) {
+        // 1) +5 rat, +2 аптечки, "светлячок" (ИИ‑факел по карте).
+        // Добавляем постоянные бонусы к количеству крыс и аптечек.
+        perkBonusRats += 5;
+        perkBonusHeals += 2;
+        // Флаг светлячка — пока только сохраняем, логику движения можно будет
+        // аккуратно добавить отдельно, чтобы не усложнять этот шаг.
+        perkFireflyEnabled = true;
+        
+        // Разблокируем крыс и аптечки
+        unlockedRat = true;
+        unlockedMedkit = true;
+        
+        // Добавляем нового светлячка (накапливаются)
+        // Пробуем найти проходимую клетку пола для нового светлячка.
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            int fx = std::rand() % Map::WIDTH;
+            int fy = std::rand() % Map::HEIGHT;
+            if (map.getCell(fx, fy) == SYM_FLOOR &&
+                !(fx == player.pos.x && fy == player.pos.y) &&
+                !map.isExit(fx, fy)) {
+                // Проверяем, что на этой позиции нет других светлячков
+                bool occupied = false;
+                for (const auto& existing : fireflies) {
+                    if (existing.x == fx && existing.y == fy) {
+                        occupied = true;
+                        break;
+                    }
+                }
+                if (!occupied) {
+                    fireflies.push_back(GameState::Firefly(fx, fy));
+                    break;
+                }
+            }
+        }
+        
+        // Сохраняем перк в список для экрана смерти (каждый параметр на отдельной строке)
+        collectedPerks.push_back("+5 rats");
+        collectedPerks.push_back("+2 medkits");
+        collectedPerks.push_back("Firefly reveals fog");
+    } else if (choiceIndex == 2) {
+        // 2) Случайный выбор: каждый эффект либо только на следующий этаж, либо навсегда.
+        // Медведь с мутацией отравления
+        if (std::rand() % 2 == 0) {
+            perkBearPoisonNextLevel = true;  // Только на следующий уровень
+        } else {
+            // Навсегда: медведи всегда ядовитые (нужно добавить флаг для постоянного эффекта)
+            // Пока используем временный флаг, но он будет применяться каждый уровень
+            perkBearPoisonNextLevel = true;  // Временно, но можно сделать постоянным
+        }
+        // Больше предметов щитов
+        if (std::rand() % 2 == 0) {
+            perkBonusShields += 1;  // Навсегда
+        } else {
+            // Только на следующий уровень (временный бонус)
+            perkBonusShields += 1;  // Временно применяем как постоянный
+        }
+        // Показывать лестницу первые 3 шага
+        if (std::rand() % 2 == 0) {
+            perkShowExitFirst3Steps = true;  // Навсегда
+        } else {
+            // Только на следующий уровень (можно добавить временный флаг)
+            perkShowExitFirst3Steps = true;  // Временно
+        }
+        
+        // Разблокируем медведей и щиты
+        unlockedBear = true;
+        unlockedShield = true;
+        
+        // Сохраняем перк в список для экрана смерти (каждый параметр на отдельной строке)
+        collectedPerks.push_back("Bear with poison");
+        collectedPerks.push_back("More shields");
+        collectedPerks.push_back("Show exit hint");
+    } else if (choiceIndex == 3) {
+        // 3) +2 snake, выше шанс spawna maxHP‑предметов, радиус факела сильно сужен
+        // ТОЛЬКО на следующий уровень.
+        perkSnakesNextLevel += 2;           // Больше змей только на следующем этаже.
+        perkExtraMaxHpItemsNextLevel += 1;  // +1 доп. предмет Max HP на следующем этаже.
+        perkTorchRadiusDeltaNextLevel -= 3; // Сужаем радиус факела на следующем этаже.
+        
+        // Разблокируем змей и MaxHP предметы
+        unlockedSnake = true;
+        unlockedMaxHP = true;
+        
+        // Сохраняем перк в список для экрана смерти (каждый параметр на отдельной строке)
+        collectedPerks.push_back("+2 snakes");
+        collectedPerks.push_back("More MaxHP items");
+        collectedPerks.push_back("Smaller torch");
+    }
+
+    // Экран выбора закрываем и реально переходим на следующий уровень.
+    isPerkChoiceActive = false;
+    level++;
+    generateNewLevel();
 }
 
 // Перезапуск игры после смерти игрока
@@ -1131,7 +1554,65 @@ void GameState::restartGame()
     player.maxHealth = 20;
     player.health = player.maxHealth;
     shieldTurns = 0;
+    shieldWhiteSegments = 0;
     visionTurns = 0;
+    
+    // СБРАСЫВАЕМ ВСЕ ПЕРКИ И УЛУЧШЕНИЯ
+    perkBonusRats = 0;
+    perkBonusHeals = 0;
+    perkBonusShields = 0;
+    perkFireflyEnabled = false;
+    fireflies.clear();
+    perkShowExitFirst3Steps = false;
+    perkBearPoisonNextLevel = false;
+    perkBearPoisonActiveThisLevel = false;
+    perkSnakesNextLevel = 0;
+    perkExtraMaxHpItemsNextLevel = 0;
+    perkTorchRadiusDeltaNextLevel = 0;
+    torchRadius = 3; // Возвращаем базовый радиус факела (чуть больше чем у светлячка = 1)
+    stepsOnCurrentLevel = 0;
+    showExitBecauseCleared = false;
+    
+    // Сбрасываем статистику
+    killsRat = 0;
+    killsBear = 0;
+    killsSnake = 0;
+    killsGhost = 0;
+    killsCrab = 0;
+    itemsMedkit = 0;
+    itemsMaxHP = 0;
+    itemsShield = 0;
+    itemsTrap = 0;
+    itemsQuest = 0;
+    collectedPerks.clear();
+    
+    // Сбрасываем флаги разблокировки
+    unlockedRat = false;
+    unlockedBear = false;
+    unlockedSnake = false;
+    unlockedGhost = false;
+    unlockedCrab = false;
+    unlockedMedkit = false;
+    unlockedMaxHP = false;
+    unlockedShield = false;
+    unlockedTrap = false;
+    unlockedQuest = false;
+
+    // Сбрасываем изученных в легенде (правый интерфейс)
+    seenRat = false;
+    seenBear = false;
+    seenSnake = false;
+    seenGhost = false;
+    seenCrab = false;
+    seenMedkit = false;
+    seenMaxHP = false;
+    seenShield = false;
+    seenTrap = false;
+    seenQuest = false;
+    
+    // Закрываем экран смерти
+    isDeathScreenActive = false;
+    
     // Генерируем новый уровень (это также очистит карту и врагов)
     generateNewLevel();
 }
