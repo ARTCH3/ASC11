@@ -3,15 +3,25 @@
 #include "Map.h"
 #include "Entity.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <ctime>
 #include <SDL2/SDL.h>
 #include <string>
 #include <cstring>
-#include <SDL2/SDL.h>
 
-Graphics::Graphics(int width, int height)
+Graphics::Graphics(int width,
+                   int height,
+                   int leftPanelWidth_,
+                   int rightPanelWidth_,
+                   int topPanelHeight_,
+                   int bottomPanelHeight_)
     : screenWidth(width),
       screenHeight(height),
+      leftPanelWidth(leftPanelWidth_),
+      rightPanelWidth(rightPanelWidth_),
+      topPanelHeight(topPanelHeight_),
+      bottomPanelHeight(bottomPanelHeight_),
       colorPlayer{100, 200, 255},
       colorWall{0, 0, 100},        // #000064
       colorFloor{50, 50, 150},     // #323296
@@ -68,12 +78,20 @@ static tcod::ColorRGB lerpColor(const tcod::ColorRGB& a, const tcod::ColorRGB& b
 
 void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius)
 {
-    // Обновляем эффект факела с пульсацией
-    // Используем время для плавной пульсации (даже когда игрок стоит)
-    static float time = 0.0f;
-    time += 0.03f; // Медленное увеличение времени для плавной пульсации
+    // Обновляем эффект факела с пульсацией в реальном времени
+    // Используем SDL_GetTicks() для надежного измерения времени (работает каждый кадр!)
+    static Uint32 lastTime = SDL_GetTicks();
+    Uint32 currentTime = SDL_GetTicks();
+    float deltaTime = static_cast<float>(currentTime - lastTime) / 1000.0f; // Конвертируем в секунды
+    if (deltaTime > 0.1f) deltaTime = 0.1f; // Ограничиваем максимальный шаг для стабильности
+    if (deltaTime < 0.0f) deltaTime = 0.0f; // Защита от отрицательных значений
+    lastTime = currentTime;
     
-    torchX += 0.1f; // Медленнее обновляем для более плавного эффекта
+    static float time = 0.0f;
+    // <<< ДЛЯ ИЗМЕНЕНИЯ СКОРОСТИ ПУЛЬСАЦИИ: измени множитель здесь (больше = быстрее) >>>
+    time += deltaTime * 1.0f; // Пульсация в реальном времени (быстрая, как при движении)
+    
+    torchX += deltaTime * 6.0f; // Обновляем в реальном времени
     float dx = 0.0f, dy = 0.0f, di = 0.0f;
     
     // Очень слабое случайное смещение позиции факела для эффекта мерцания
@@ -84,7 +102,8 @@ void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius
     
     // Пульсация интенсивности света (даже когда игрок стоит)
     // Используем синус для плавной пульсации
-    float pulse = 0.25f + 0.1f * std::sin(time * 1.5f); // Мягкая пульсация от 0.15 до 0.35
+    // <<< ДЛЯ ИЗМЕНЕНИЯ СКОРОСТИ ПУЛЬСАЦИИ: измени множитель в sin() здесь (больше = быстрее) >>>
+    float pulse = 0.25f + 0.1f * std::sin(time * 2.0f); // Быстрая пульсация от 0.15 до 0.35
     di = pulse * (0.5f + 0.5f * torchNoise.get(&torchX)); // Комбинируем с шумом для естественности
     
     const float TORCH_RADIUS = static_cast<float>(torchRadius);
@@ -96,30 +115,38 @@ void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius
     const tcod::ColorRGB darkGround{50, 50, 150};  // Темный пол
     const tcod::ColorRGB lightGround{200, 180, 50}; // Светлый пол
     
+    // Константы для позиционирования карты в центре экрана
+    const int leftPanelWidth = this->leftPanelWidth;
+    const int topPanelHeight = std::max(this->topPanelHeight, 2); // резервируем 2 строки под HP/Shield
+    
     // Отрисовываем карту с учетом FOV и эффекта факела
-    for (int y = 0; y < Map::HEIGHT && y < screenHeight; ++y) {
-        for (int x = 0; x < Map::WIDTH && x < screenWidth; ++x) {
+    // Карта рисуется в центре экрана (смещение на leftPanelWidth по X и topPanelHeight по Y)
+    for (int mapY = 0; mapY < Map::HEIGHT; ++mapY) {
+        for (int mapX = 0; mapX < Map::WIDTH; ++mapX) {
+            const int screenX = leftPanelWidth + mapX;
+            const int screenY = topPanelHeight + mapY;
+            
             // Проверяем границы консоли
-            if (!console.in_bounds({x, y})) {
+            if (!console.in_bounds({screenX, screenY})) {
                 continue;
             }
             
-            const bool isVisible = map.isVisible(x, y);
-            const bool isExplored = map.isExplored(x, y);
-            const bool isWall = map.isWall(x, y);
+            const bool isVisible = map.isVisible(mapX, mapY);
+            const bool isExplored = map.isExplored(mapX, mapY);
+            const bool isWall = map.isWall(mapX, mapY);
             
             if (!isVisible) {
                 // Невидимые клетки
                 if (isExplored) {
                     // Исследованные, но невидимые - затемненные
-                    console.at({x, y}).bg = isWall ? darkWall : darkGround;
-                    console.at({x, y}).ch = 219; // Блок (CP437 код 219 = █)
-                    console.at({x, y}).fg = isWall ? darkWall : darkGround;
+                    console.at({screenX, screenY}).bg = isWall ? darkWall : darkGround;
+                    console.at({screenX, screenY}).ch = 219; // Блок (CP437 код 219 = █)
+                    console.at({screenX, screenY}).fg = isWall ? darkWall : darkGround;
                 } else {
                     // Не исследованные - черные
-                    console.at({x, y}).bg = colorDark;
-                    console.at({x, y}).ch = ' ';
-                    console.at({x, y}).fg = colorDark;
+                    console.at({screenX, screenY}).bg = colorDark;
+                    console.at({screenX, screenY}).ch = ' ';
+                    console.at({screenX, screenY}).fg = colorDark;
                 }
             } else {
                 // Видимые клетки с эффектом факела
@@ -127,8 +154,8 @@ void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius
                 tcod::ColorRGB light = isWall ? lightWall : lightGround;
                 
                 // Вычисляем расстояние до факела (с учетом смещения)
-                const float r = static_cast<float>((x - playerX + dx) * (x - playerX + dx) + 
-                                                   (y - playerY + dy) * (y - playerY + dy));
+                const float r = static_cast<float>((mapX - playerX + dx) * (mapX - playerX + dx) + 
+                                                   (mapY - playerY + dy) * (mapY - playerY + dy));
                 
                 if (r < SQUARED_TORCH_RADIUS) {
                     // Интерполируем цвет в зависимости от расстояния
@@ -141,9 +168,9 @@ void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius
                 }
                 
                 // Рисуем цветной блок
-                console.at({x, y}).bg = base;
-                console.at({x, y}).ch = 219; // Символ блока (CP437 код 219 = █)
-                console.at({x, y}).fg = base;
+                console.at({screenX, screenY}).bg = base;
+                console.at({screenX, screenY}).ch = 219; // Символ блока (CP437 код 219 = █)
+                console.at({screenX, screenY}).fg = base;
             }
         }
     }
@@ -152,25 +179,37 @@ void Graphics::drawMap(const Map& map, int playerX, int playerY, int torchRadius
 void Graphics::drawEntity(const Entity& entity)
 {
     // Рисуем сущность только если она видна
-    int x = entity.pos.x;
-    int y = entity.pos.y;
+    // Учитываем смещение карты в центре экрана
+    const int leftPanelWidth = this->leftPanelWidth;
+    const int topPanelHeight = std::max(this->topPanelHeight, 2);
+    
+    int mapX = entity.pos.x;
+    int mapY = entity.pos.y;
+    int screenX = leftPanelWidth + mapX;
+    int screenY = topPanelHeight + mapY;
 
-    if (x >= 0 && x < Map::WIDTH && y >= 0 && y < Map::HEIGHT &&
-        x < screenWidth && y < screenHeight &&
-        console.in_bounds({x, y})) {
-        console.at({x, y}).ch = entity.symbol;
-        console.at({x, y}).fg = entity.color;
+    if (mapX >= 0 && mapX < Map::WIDTH && mapY >= 0 && mapY < Map::HEIGHT &&
+        screenX < screenWidth && screenY < screenHeight &&
+        console.in_bounds({screenX, screenY})) {
+        console.at({screenX, screenY}).ch = entity.symbol;
+        console.at({screenX, screenY}).fg = entity.color;
     }
 }
 
 void Graphics::drawItem(const Item& item)
 {
-    int x = item.pos.x;
-    int y = item.pos.y;
+    // Учитываем смещение карты в центре экрана
+    const int leftPanelWidth = this->leftPanelWidth;
+    const int topPanelHeight = std::max(this->topPanelHeight, 2);
+    
+    int mapX = item.pos.x;
+    int mapY = item.pos.y;
+    int screenX = leftPanelWidth + mapX;
+    int screenY = topPanelHeight + mapY;
 
-    if (x >= 0 && x < Map::WIDTH && y >= 0 && y < Map::HEIGHT &&
-        x < screenWidth && y < screenHeight &&
-        console.in_bounds({x, y})) {
+    if (mapX >= 0 && mapX < Map::WIDTH && mapY >= 0 && mapY < Map::HEIGHT &&
+        screenX < screenWidth && screenY < screenHeight &&
+        console.in_bounds({screenX, screenY})) {
         // Цвет предмета зависит от типа:
         // + : увеличение максимального HP (зеленый)
         // . : "прозрачный" предмет (более темный серый)
@@ -180,28 +219,35 @@ void Graphics::drawItem(const Item& item)
         tcod::ColorRGB itemColor = colorItem;
         if (item.symbol == static_cast<char>(SYM_MAX_HP)) {
             itemColor = tcod::ColorRGB{0, 204, 0};
-        } else if (item.symbol == static_cast<char>(SYM_GHOST_ITEM)) {
+        } else if (item.symbol == static_cast<char>(SYM_TRAP)) {
             itemColor = tcod::ColorRGB{40, 40, 40};
         } else if (item.symbol == static_cast<char>(SYM_SHIELD)) {
-            itemColor = tcod::ColorRGB{120, 255, 255};
+            // Щит — чисто белый, чтобы сразу бросался в глаза.
+            itemColor = tcod::ColorRGB{255, 255, 255};
         } else if (item.symbol == static_cast<char>(SYM_QUEST)) {
             itemColor = tcod::ColorRGB{255, 255, 255};
         }
 
-        console.at({x, y}).ch = item.symbol;
-        console.at({x, y}).fg = itemColor;
+        console.at({screenX, screenY}).ch = item.symbol;
+        console.at({screenX, screenY}).fg = itemColor;
     }
 }
 
-void Graphics::drawPlayer(const Entity& player, bool isPoisoned)
+void Graphics::drawPlayer(const Entity& player, bool isPoisoned, bool hasShield)
 {
     // Рисуем игрока с динамическим цветом в зависимости от здоровья
-    int x = player.pos.x;
-    int y = player.pos.y;
+    // Учитываем смещение карты в центре экрана
+    const int leftPanelWidth = this->leftPanelWidth;
+    const int topPanelHeight = std::max(this->topPanelHeight, 2);
+    
+    int mapX = player.pos.x;
+    int mapY = player.pos.y;
+    int screenX = leftPanelWidth + mapX;
+    int screenY = topPanelHeight + mapY;
 
-    if (x >= 0 && x < Map::WIDTH && y >= 0 && y < Map::HEIGHT &&
-        x < screenWidth && y < screenHeight &&
-        console.in_bounds({x, y})) {
+    if (mapX >= 0 && mapX < Map::WIDTH && mapY >= 0 && mapY < Map::HEIGHT &&
+        screenX < screenWidth && screenY < screenHeight &&
+        console.in_bounds({screenX, screenY})) {
         // Вычисляем цвет в зависимости от здоровья.
         // Если игрок отравлен — временно перекрашиваем его в ядовито‑зелёный цвет,
         // чтобы было сразу видно состояние.
@@ -209,7 +255,10 @@ void Graphics::drawPlayer(const Entity& player, bool isPoisoned)
         
         tcod::ColorRGB playerColor;
         
-        if (isPoisoned) {
+        if (hasShield) {
+            // При активном щите игрок подсвечен белым, чтобы это было явно видно.
+            playerColor = tcod::ColorRGB{255, 255, 255};
+        } else if (isPoisoned) {
             // Ядовитый/болотный зелёный, немного темнее при низком HP.
             const tcod::ColorRGB highHpPoison{80, 240, 120};
             const tcod::ColorRGB lowHpPoison{20, 100, 40};
@@ -234,8 +283,8 @@ void Graphics::drawPlayer(const Entity& player, bool isPoisoned)
             }
         }
         
-        console.at({x, y}).ch = player.symbol;
-        console.at({x, y}).fg = playerColor;
+        console.at({screenX, screenY}).ch = player.symbol;
+        console.at({screenX, screenY}).fg = playerColor;
     }
 }
 
@@ -274,63 +323,70 @@ void Graphics::drawUI(const Entity& player,
                       bool isPlayerPoisoned,
                       bool isPlayerGhostCursed,
                       int shieldTurns,
+                      int shieldWhiteSegments,
                       bool questActive,
                       int questKills,
                       int questTarget)
 {
     char buffer[256];
 
-    // --- Надпись квеста в верхней части карты (y=0) ---
-    if (questActive && questTarget > 0) {
-        snprintf(buffer,
-                 sizeof(buffer),
-                 "Квест убей %d монстров",
-                 questTarget);
-        // Выводим поверх карты с полупрозрачным фоном для читаемости
-        for (int x = 0; x < screenWidth && x < static_cast<int>(strlen(buffer)); ++x) {
+    // Константы для позиционирования
+    const int leftPanelWidth = this->leftPanelWidth;
+    const int rightPanelWidth = this->rightPanelWidth;
+    const int topPanelHeight = std::max(this->topPanelHeight, 2); // резерв 2 строки под HP/Shield
+    const int bottomPanelHeight = this->bottomPanelHeight;
+    const int gameAreaStartX = leftPanelWidth;
+    const int gameAreaStartY = topPanelHeight;
+    const int bottomPanelY = screenHeight - bottomPanelHeight;
+    
+    // Очищаем все UI области черным цветом
+    const tcod::ColorRGB black{0, 0, 0};
+    const tcod::ColorRGB white{255, 255, 255};
+    
+    // Очищаем верхнюю панель
+    for (int x = 0; x < screenWidth; ++x) {
             if (console.in_bounds({x, 0})) {
-                console.at({x, 0}).ch = (x < static_cast<int>(strlen(buffer))) ? buffer[x] : ' ';
-                console.at({x, 0}).fg = tcod::ColorRGB{220, 220, 220};
-                console.at({x, 0}).bg = tcod::ColorRGB{20, 20, 20}; // Темный фон для читаемости
+            console.at({x, 0}).ch = ' ';
+            console.at({x, 0}).bg = black;
+            console.at({x, 0}).fg = white;
+        }
+    }
+    
+    // Очищаем левую боковую панель
+    for (int y = gameAreaStartY; y < bottomPanelY; ++y) {
+        for (int x = 0; x < leftPanelWidth; ++x) {
+            if (console.in_bounds({x, y})) {
+                console.at({x, y}).ch = ' ';
+                console.at({x, y}).bg = black;
+                console.at({x, y}).fg = white;
             }
         }
-        // Используем tcod::print для более надежного вывода
-        try {
-            tcod::print(console, {0, 0}, buffer, tcod::ColorRGB{220, 220, 220}, tcod::ColorRGB{20, 20, 20});
-        } catch (const std::exception&) {}
     }
-
-    // Рисуем UI сразу под картой (используем первую доступную строку)
-    int uiY = Map::HEIGHT;
-
-    // Очищаем строки UI
-    for (int y = uiY; y < screenHeight; ++y) {
+    
+    // Очищаем правую боковую панель
+    for (int y = gameAreaStartY; y < bottomPanelY; ++y) {
+        for (int x = gameAreaStartX + Map::WIDTH; x < screenWidth; ++x) {
+            if (console.in_bounds({x, y})) {
+                console.at({x, y}).ch = ' ';
+                console.at({x, y}).bg = black;
+                console.at({x, y}).fg = white;
+            }
+        }
+    }
+    
+    // Очищаем нижнюю панель
         for (int x = 0; x < screenWidth; ++x) {
-            console.at({x, y}).ch = ' ';
-            console.at({x, y}).bg = tcod::ColorRGB{0, 0, 0};
+        if (console.in_bounds({x, bottomPanelY})) {
+            console.at({x, bottomPanelY}).ch = ' ';
+            console.at({x, bottomPanelY}).bg = black;
+            console.at({x, bottomPanelY}).fg = white;
         }
     }
 
-    // --- Линия 1: здоровье игрока — полоса, затем цифры справа ---
+    // === ВЕРХНЯЯ ПАНЕЛЬ (y=0): Полоса здоровья с тире ===
     const float healthPercent = std::clamp(static_cast<float>(player.health) / static_cast<float>(player.maxHealth), 0.0f, 1.0f);
 
-    // Метка HP слева с символом
-    try {
-        tcod::print(console,
-                    {0, uiY},
-                    "+ Hero HP:",
-                    tcod::ColorRGB{200, 200, 200},
-                    std::nullopt);
-    } catch (const std::exception&) {}
-
-    // Рисуем полосу сразу после метки
-    const int barX = 10;
-    // Оставляем место под пробел и числа справа: " 000/000"
-    const int reserveForText = 8;
-    const int barWidth = std::max(0, screenWidth - barX - reserveForText);
-    const int filled = static_cast<int>(std::round(healthPercent * barWidth));
-
-    // Обычный градиент HP: красный -> желтый -> зеленый -> синий (совпадает с состояниями игрока, но в обратном направлении)
+    // Градиент HP: красный -> желтый -> зеленый -> синий
     auto hpGradientNormal = [](float t) {
         const tcod::ColorRGB red{255, 60, 60};
         const tcod::ColorRGB yellow{255, 220, 80};
@@ -349,279 +405,129 @@ void Graphics::drawUI(const Entity& player,
         }
     };
 
-    for (int i = 0; i < barWidth; ++i) {
-        const bool isFilled = i < filled;
-        tcod::ColorRGB c = tcod::ColorRGB{60, 60, 60}; // цвет для пустых (темно-серый)
-
+    // Рисуем полосу HP по ширине игрового мира (строго над картой), символ '-'
+    for (int i = 0; i < Map::WIDTH; ++i) {
+        int x = leftPanelWidth + i;
+        const bool isFilled = i < static_cast<int>(healthPercent * Map::WIDTH);
+        tcod::ColorRGB dashColor = tcod::ColorRGB{100, 100, 100};
         if (isPlayerGhostCursed) {
-            // Эффект призрака: вся полоска здоровья становится однотонно-серой,
-            // чтобы игрок не мог оценить реальный запас HP по цвету.
-            c = tcod::ColorRGB{80, 80, 80};
+            dashColor = tcod::ColorRGB{80, 80, 80};
         } else if (isFilled) {
             if (isPlayerPoisoned) {
-                // При отравлении все квадратики HP временно становятся зелёными,
-                // но не одинаковыми: оттенок зависит от текущего уровня здоровья.
-                // Чем меньше HP — тем более "тёмный/болотный" зелёный.
                 const tcod::ColorRGB highHpGreen{90, 240, 120};
                 const tcod::ColorRGB lowHpGreen{10, 80, 30};
-                tcod::ColorRGB base = lerpColor(lowHpGreen, highHpGreen, healthPercent);
-
-                // Лёгкая вариация по ширине полосы, чтобы квадратики не были одного цвета.
-                const float tBlock = (barWidth <= 1) ? 0.0f : static_cast<float>(i) / static_cast<float>(barWidth - 1);
-                const float brightness = 0.8f + 0.2f * tBlock; // от 0.8 до 1.0
-                c = tcod::ColorRGB{
-                    static_cast<uint8_t>(std::clamp(static_cast<int>(base.r * brightness), 0, 255)),
-                    static_cast<uint8_t>(std::clamp(static_cast<int>(base.g * brightness), 0, 255)),
-                    static_cast<uint8_t>(std::clamp(static_cast<int>(base.b * brightness), 0, 255))};
+                dashColor = lerpColor(lowHpGreen, highHpGreen, healthPercent);
             } else {
-                const float t = (barWidth <= 1) ? 0.0f : static_cast<float>(i) / static_cast<float>(barWidth - 1);
-                c = hpGradientNormal(t);
+                const float t = Map::WIDTH <= 1 ? 0.0f : static_cast<float>(i) / static_cast<float>(Map::WIDTH - 1);
+                dashColor = hpGradientNormal(t);
             }
         }
-        if (console.in_bounds({barX + i, uiY})) {
-            // Используем пробел с цветным фоном для отображения полосы HP
-            // Это более надежный способ, чем символ блока
-            console.at({barX + i, uiY}).ch = ' ';  // Пробел
-            console.at({barX + i, uiY}).bg = c;    // Цветной фон
-            console.at({barX + i, uiY}).fg = c;    // Цвет текста тоже устанавливаем
+        if (console.in_bounds({x, 0})) {
+            console.at({x, 0}).ch = '-';
+            console.at({x, 0}).fg = dashColor;
+            console.at({x, 0}).bg = black;
         }
     }
 
-    // Цифры справа от полосы
+    // Полоса щита под HP (строка 1). Слева синие (оставшиеся), справа серые (потраченные).
+    int shieldY = 1;
+    // shieldTurns — сколько синих делений осталось, shieldWhiteSegments — сколько белых (урон по щиту).
+    int blueCount  = std::clamp(shieldTurns, 0, Map::WIDTH);
+    int whiteCount = std::clamp(shieldWhiteSegments, 0, Map::WIDTH - blueCount);
+    for (int i = 0; i < Map::WIDTH; ++i) {
+        int x = leftPanelWidth + i;
+        tcod::ColorRGB dashColor{60, 60, 60}; // по умолчанию серый
+        if (i < blueCount) {
+            dashColor = tcod::ColorRGB{80, 120, 255}; // синий
+        } else if (i < blueCount + whiteCount) {
+            dashColor = tcod::ColorRGB{230, 230, 230}; // белый (побитый, но ещё живой щит)
+        }
+        if (console.in_bounds({x, shieldY})) {
+            console.at({x, shieldY}).ch = '-';
+            console.at({x, shieldY}).fg = dashColor;
+            console.at({x, shieldY}).bg = black;
+        }
+    }
+
+    
+    // Число HP — по центру левой панели (верхняя строка)
     if (isPlayerGhostCursed) {
-        // Эффект призрака: игрок видит только вопросительные знаки вместо точных чисел.
-        std::snprintf(buffer, sizeof(buffer), " ??/??");
+        snprintf(buffer, sizeof(buffer), "??");
     } else {
-        std::snprintf(buffer, sizeof(buffer), " %d/%d", player.health, player.maxHealth);
+        snprintf(buffer, sizeof(buffer), "%d", player.health);
     }
-    const int hpTextX = barX + barWidth;
+    int currentHpX = (leftPanelWidth - static_cast<int>(strlen(buffer))) / 2;
     try {
-        tcod::print(console,
-                    {hpTextX, uiY},
-                    buffer,
-                    tcod::ColorRGB{240, 240, 240},
-                    std::nullopt);
+        tcod::print(console, {currentHpX, 0}, buffer, white, std::nullopt);
     } catch (const std::exception&) {}
 
-    // --- Линия-разделитель между HP и уровнем ---
-    if (uiY + 1 < screenHeight) {
-        const tcod::ColorRGB separatorColor{80, 80, 80};
-        for (int x = 0; x < screenWidth; ++x) {
-            if (console.in_bounds({x, uiY + 1})) {
-                // Используем дефис для разделителя (более надежно, чем специальный символ линии)
-                console.at({x, uiY + 1}).ch = '-'; // Простой дефис
-                console.at({x, uiY + 1}).fg = separatorColor;
-                console.at({x, uiY + 1}).bg = tcod::ColorRGB{0, 0, 0}; // Черный фон
-            }
+    // Оформление блока "Nearby" так же, как Legend: линия сверху, заголовок, линия снизу.
+    const tcod::ColorRGB nearbyLabelColor{200, 200, 200};
+
+    // Линия '-' прямо под HP по ширине левой панели
+    int nearbyTopY = 1;
+    for (int x = 0; x < leftPanelWidth; ++x) {
+        if (console.in_bounds({x, nearbyTopY})) {
+            console.at({x, nearbyTopY}).ch = '-';
+            console.at({x, nearbyTopY}).fg = nearbyLabelColor;
+            console.at({x, nearbyTopY}).bg = black;
         }
     }
 
-    // --- Линия 2: уровень и позиция ---
-    int infoLineY = uiY + 2;
-    // Строка уровня и позиции
-    snprintf(buffer,
-             sizeof(buffer),
-             "# Level: %s | Pos %d,%d",
-             toRoman(level).c_str(),
-             player.pos.x,
-             player.pos.y);
+    // Надпись "Nearby" по центру
+    int nearbyLabelY = nearbyTopY + 1;
+    int nearbyLabelX = (leftPanelWidth - 6) / 2; // "Nearby" длина 6
     try {
-        tcod::print(console, {0, infoLineY}, buffer, tcod::ColorRGB{180, 180, 180}, std::nullopt);
+        tcod::print(console, {nearbyLabelX, nearbyLabelY}, "Nearby", nearbyLabelColor, std::nullopt);
     } catch (const std::exception&) {}
 
-    // --- Линия 3: управление с переносом ---
-    int controlX = 0;
-    int controlY = infoLineY + 1;
-    const tcod::ColorRGB controlColor{200, 200, 200};
-
-    auto nextControlLine = [&]() {
-        controlY++;
-        controlX = 0;
-    };
-
-    // Функция для вывода символа с переносом при переполнении строки
-    auto putChar = [&](char ch) {
-        if (controlY >= screenHeight) return;
-        if (controlX >= screenWidth) {
-            nextControlLine();
-            if (controlY >= screenHeight) return;
+    // Линия '-' под подписью
+    int nearbyBottomY = nearbyLabelY + 1;
+    for (int x = 0; x < leftPanelWidth; ++x) {
+        if (console.in_bounds({x, nearbyBottomY})) {
+            console.at({x, nearbyBottomY}).ch = '-';
+            console.at({x, nearbyBottomY}).fg = nearbyLabelColor;
+            console.at({x, nearbyBottomY}).bg = black;
         }
-        if (console.in_bounds({controlX, controlY})) {
-            console.at({controlX, controlY}).ch = ch;
-            console.at({controlX, controlY}).fg = controlColor;
-            console.at({controlX, controlY}).bg = tcod::ColorRGB{0, 0, 0};
-        }
-        controlX++;
+    }
+
+    // Список мобов начинаем ещё на строку ниже, чтобы не прилипали к заголовку
+    int nearbyY = nearbyBottomY + 1;
+
+    // Максимальное ХП справа сверху по центру правой панели
+    if (isPlayerGhostCursed) {
+        snprintf(buffer, sizeof(buffer), "??");
+    } else {
+        snprintf(buffer, sizeof(buffer), "%d", player.maxHealth);
+    }
+    int rightPanelStartX = gameAreaStartX + Map::WIDTH;
+    int maxHpX = rightPanelStartX + (rightPanelWidth - static_cast<int>(strlen(buffer))) / 2;
+    try {
+        tcod::print(console, {maxHpX, 0}, buffer, white, std::nullopt);
+    } catch (const std::exception&) {}
+
+    
+    // Функция для определения направления моба относительно игрока
+    auto getDirectionString = [](int enemyX, int enemyY, int playerX, int playerY) -> std::string {
+        int dx = enemyX - playerX;
+        int dy = enemyY - playerY;
+        
+        if (dx == 0 && dy == 0) return "(*)"; // На одной клетке
+        if (dx == 0 && dy < 0) return "(^)";  // Вверх
+        if (dx == 0 && dy > 0) return "(v)";  // Вниз
+        if (dx > 0 && dy == 0) return "(->)"; // Вправо
+        if (dx < 0 && dy == 0) return "(<-)"; // Влево
+        if (dx > 0 && dy < 0) return "(-v>)"; // Вправо-вверх (диагональ)
+        if (dx > 0 && dy > 0) return "(-v>)"; // Вправо-вниз (диагональ)
+        if (dx < 0 && dy < 0) return "(-v>)"; // Влево-вверх (диагональ)
+        if (dx < 0 && dy > 0) return "(-v>)"; // Влево-вниз (диагональ)
+        return "(?)";
     };
     
-    // Выводим "> Move: [WASD]" или "> Move: [????]" при эффекте краба.
-    // Чтобы не тянуть сюда все состояние GameState, просто проверяем,
-    // есть ли среди врагов краб, прицепленный к игроку.
-    bool isPlayerControlsInverted = false;
+    // Собираем видимых врагов
+    std::vector<std::pair<const Entity*, std::string>> nearbyEnemies;
     for (const auto& enemy : enemies) {
-        if (enemy.symbol == SYM_CRAB && enemy.crabAttachedToPlayer) {
-            isPlayerControlsInverted = true;
-            break;
-        }
-    }
-    putChar('>');
-    putChar(' ');
-    const char* moveText = isPlayerControlsInverted ? "Move: [????]" : "Move: [WASD]";
-    for (int i = 0; moveText[i] != '\0'; ++i) {
-        putChar(moveText[i]);
-    }
-    
-    // Разделитель |
-    putChar(' ');
-    putChar('|');
-    putChar(' ');
-    
-    // Выводим "Diag: [QEZC]" или "Diag: [????]" при эффекте краба.
-    const char* diagText = isPlayerControlsInverted ? "Diag: [????]" : "Diag: [QEZC]";
-    for (int i = 0; diagText[i] != '\0'; ++i) {
-        putChar(diagText[i]);
-    }
-    
-    // Разделитель |
-    putChar(' ');
-    putChar('|');
-    putChar(' ');
-    
-    // Выводим "Full: [F11]"
-    const char* fullText = "Full: [F11]";
-    for (int i = 0; fullText[i] != '\0'; ++i) {
-        putChar(fullText[i]);
-    }
-
-    // Разделитель |
-    putChar(' ');
-    putChar('|');
-    putChar(' ');
-
-    // Выводим "Quit: [ESC]"
-    const char* quitText = "Quit: [ESC]";
-    for (int i = 0; quitText[i] != '\0'; ++i) {
-        putChar(quitText[i]);
-    }
-
-    // Показ счётчика квеста и таймера щита в одной строке (с переносом при нехватке места)
-    auto printText = [&](const char* txt) {
-        for (int i = 0; txt[i] != '\0'; ++i) {
-            putChar(txt[i]);
-        }
-    };
-
-    // Проверяем, влезет ли текст перед выводом
-    auto checkAndPrint = [&](const char* txt) -> bool {
-        int textLen = static_cast<int>(strlen(txt));
-        // Если текст не влезает на текущую строку, переносим на новую
-        if (controlX + textLen > screenWidth && controlX > 0) {
-            nextControlLine();
-            if (controlY >= screenHeight) return false;
-        }
-        printText(txt);
-        return true;
-    };
-
-    bool printedSomething = false;
-    if (questActive && questTarget > 0) {
-        snprintf(buffer, sizeof(buffer), " | Kill %d/%d", questKills, questTarget);
-        if (checkAndPrint(buffer)) {
-            printedSomething = true;
-        }
-    }
-    if (shieldTurns > 0) {
-        snprintf(buffer, sizeof(buffer), printedSomething ? " | Shield:%d" : "Shield:%d", shieldTurns);
-        checkAndPrint(buffer);
-    }
-
-    // --- Линия 4+: легенда с переносом ---
-    // Легенда начинается сразу после последней строки панели управления (без пустой строки)
-    int legendY = controlY + 1;
-    int legendX = 0;
-
-    auto nextLegendLine = [&]() {
-        legendY++;
-        legendX = 0;
-    };
-
-    auto putLegendChar = [&](char ch, const tcod::ColorRGB& color) {
-        if (legendX >= screenWidth) {
-            nextLegendLine();
-        }
-        if (legendY >= screenHeight) return;
-        if (console.in_bounds({legendX, legendY})) {
-            console.at({legendX, legendY}).ch = ch;
-            console.at({legendX, legendY}).fg = color;
-            console.at({legendX, legendY}).bg = tcod::ColorRGB{0, 0, 0};
-        }
-        legendX++;
-    };
-
-    auto printLegendText = [&](const std::string& text, const tcod::ColorRGB& color) {
-        for (char ch : text) {
-            putLegendChar(ch, color);
-        }
-    };
-
-    auto printLegendEntry = [&](char symbol, const std::string& text, const tcod::ColorRGB& symColor, const tcod::ColorRGB& textColor) {
-        const int need = 1 + 1 + static_cast<int>(text.size()); // символ + пробел + текст
-        if (legendX + need > screenWidth) {
-            nextLegendLine();
-        }
-        if (legendY >= screenHeight) return;
-
-        putLegendChar(symbol, symColor);
-        putLegendChar(' ', textColor);
-        for (char ch : text) {
-            putLegendChar(ch, textColor);
-        }
-        // Пробел-разделитель после элемента
-        putLegendChar(' ', textColor);
-    };
-
-    const tcod::ColorRGB legendLabelColor{180, 180, 180};
-    printLegendText("Legend: ", legendLabelColor);
-
-    // Элементы легенды
-    printLegendEntry('@', "Hero", tcod::ColorRGB{100, 200, 255}, legendLabelColor);
-    printLegendEntry('r', "Rat", tcod::ColorRGB{255, 50, 50}, legendLabelColor);
-    printLegendEntry('B', "Bear", tcod::ColorRGB{139, 69, 19}, legendLabelColor);
-    printLegendEntry('S', "Snake", tcod::ColorRGB{60, 130, 60}, legendLabelColor);
-    printLegendEntry('g', "Ghost", tcod::ColorRGB{170, 170, 170}, legendLabelColor);
-    printLegendEntry('C', "Crab", tcod::ColorRGB{255, 140, 0}, legendLabelColor);
-    printLegendEntry(static_cast<char>(SYM_ITEM), "Medkit", tcod::ColorRGB{255, 180, 120}, legendLabelColor);
-    printLegendEntry(static_cast<char>(SYM_MAX_HP), "MaxHP_UP", tcod::ColorRGB{0, 204, 0}, legendLabelColor);
-    printLegendEntry(static_cast<char>(SYM_GHOST_ITEM), "Ghost", tcod::ColorRGB{80, 80, 80}, legendLabelColor);
-    printLegendEntry(static_cast<char>(SYM_SHIELD), "Shield", tcod::ColorRGB{120, 255, 255}, legendLabelColor);
-    printLegendEntry(static_cast<char>(SYM_QUEST), "Quest", tcod::ColorRGB{255, 255, 255}, legendLabelColor);
-    printLegendEntry(SYM_EXIT, "Stairs", tcod::ColorRGB{200, 200, 120}, legendLabelColor);
-
-    // --- Линии после легенды: список видимых врагов с их HP ---
-    const int enemiesStartY = legendY + 1;
-    // Убрали заголовок "Enemies in sight:" - сразу выводим список врагов
-
-    const int columnWidth = 14; // компактнее, без полосок баров
-    const int maxColumns = std::max(1, screenWidth / columnWidth);
-    const int maxRows = std::max(0, screenHeight - enemiesStartY);
-
-    int slot = 0;
-    int cursorX = 0;
-    for (const auto& enemy : enemies) {
-        if (!map.isVisible(enemy.pos.x, enemy.pos.y) || !enemy.isAlive()) {
-            continue;
-        }
-
-        const int row = slot / maxColumns;
-        if (row >= maxRows) {
-            break; // Больше нет места
-        }
-        const int col = slot % maxColumns;
-
-        const int enemyY = enemiesStartY + row;
-        cursorX = col * columnWidth;
-
-        // Название моба его цветом (определяем по символу)
+        if (enemy.isAlive() && map.isVisible(enemy.pos.x, enemy.pos.y)) {
         std::string mobName;
         if (enemy.symbol == SYM_BEAR) {
             mobName = "Bear";
@@ -634,31 +540,243 @@ void Graphics::drawUI(const Entity& player,
         } else {
             mobName = "Rat";
         }
+            nearbyEnemies.push_back({&enemy, mobName});
+        }
+    }
+    
+    // Выводим мобов (каждый на своей строке)
+    for (const auto& pair : nearbyEnemies) {
+        if (nearbyY >= bottomPanelY) break; // Не выходим за нижнюю панель
+        
+        const Entity& enemy = *pair.first;
+        const std::string& mobName = pair.second;
+        std::string direction = getDirectionString(enemy.pos.x, enemy.pos.y, player.pos.x, player.pos.y);
+        
+        // Название моба его цветом
         try {
-            tcod::print(console, {cursorX, enemyY}, mobName.c_str(), enemy.color, std::nullopt);
+            tcod::print(console, {0, nearbyY}, mobName.c_str(), enemy.color, std::nullopt);
         } catch (const std::exception&) {}
-        cursorX += static_cast<int>(mobName.size());
+        
+        int textX = static_cast<int>(mobName.size());
 
-        // Координаты в скобках
-        snprintf(buffer, sizeof(buffer), "(%d,%d)", enemy.pos.x, enemy.pos.y);
+        // Направление
         try {
-            tcod::print(console, {cursorX, enemyY}, buffer, tcod::ColorRGB{170, 170, 170}, std::nullopt);
+            tcod::print(console, {textX, nearbyY}, direction.c_str(), white, std::nullopt);
         } catch (const std::exception&) {}
-        cursorX += static_cast<int>(strlen(buffer));
+        textX += static_cast<int>(direction.size());
 
-        // Цветные цифры HP (градиент от синего к красному)
+        // Здоровье
+        snprintf(buffer, sizeof(buffer), " %d/%d", enemy.health, enemy.maxHealth);
         const float enemyPct = static_cast<float>(enemy.health) / static_cast<float>(enemy.maxHealth);
         const tcod::ColorRGB enemyHpColor = lerpColor(
-            tcod::ColorRGB{80, 120, 255},   // полный HP — сине-голубой
-            tcod::ColorRGB{255, 50, 50},    // низкий HP — красный
+            tcod::ColorRGB{80, 120, 255},
+            tcod::ColorRGB{255, 50, 50},
             1.0f - std::clamp(enemyPct, 0.0f, 1.0f));
-
-        snprintf(buffer, sizeof(buffer), "%d/%d", enemy.health, enemy.maxHealth);
         try {
-            tcod::print(console, {cursorX, enemyY}, buffer, enemyHpColor, std::nullopt);
+            tcod::print(console, {textX, nearbyY}, buffer, enemyHpColor, std::nullopt);
         } catch (const std::exception&) {}
 
-        slot++;
+        nearbyY++;
+    }
+    
+    // === ПРАВАЯ БОКОВАЯ ПАНЕЛЬ: Legend ===
+    const tcod::ColorRGB legendLabelColor{200, 200, 200};
+    
+    // Legend расположен так же, как Nearby: тире на y=1, текст на y=2, тире на y=3, список на y=4+
+    // Максимальное HP уже на y=0, поэтому Legend начинается ниже
+    int legendTopY = 1; // Верхняя тире на y=1 (как у Nearby)
+    for (int x = 0; x < rightPanelWidth; ++x) {
+        if (console.in_bounds({rightPanelStartX + x, legendTopY})) {
+            console.at({rightPanelStartX + x, legendTopY}).ch = '-';
+            console.at({rightPanelStartX + x, legendTopY}).fg = legendLabelColor;
+            console.at({rightPanelStartX + x, legendTopY}).bg = black;
+        }
+    }
+    int legendLabelY = legendTopY + 1; // y=2
+    int legendLabelX = rightPanelStartX + (rightPanelWidth - 6) / 2;
+    try { tcod::print(console, {legendLabelX, legendLabelY}, "Legend", legendLabelColor, std::nullopt); } catch (const std::exception&) {}
+    int legendLineBelowLabelY = legendLabelY + 1; // y=3
+    for (int x = 0; x < rightPanelWidth; ++x) {
+        if (console.in_bounds({rightPanelStartX + x, legendLineBelowLabelY})) {
+            console.at({rightPanelStartX + x, legendLineBelowLabelY}).ch = '-';
+            console.at({rightPanelStartX + x, legendLineBelowLabelY}).fg = legendLabelColor;
+            console.at({rightPanelStartX + x, legendLineBelowLabelY}).bg = black;
+        }
+    }
+    int legendY = legendLineBelowLabelY + 1; // y=4, список начинается отсюда
+
+    // Функция для вывода элемента легенды (строго символ в одну колонку, — и текст, ровно)
+    auto printLegendEntry = [&](char symbol, const std::string& text, const tcod::ColorRGB& symColor) {
+        if (legendY >= bottomPanelY) return;
+        int entryX = rightPanelStartX;
+        // Символ ровно по левому краю панели
+        if (console.in_bounds({entryX, legendY})) {
+            console.at({entryX, legendY}).ch = symbol;
+            console.at({entryX, legendY}).fg = symColor;
+            console.at({entryX, legendY}).bg = black;
+        }
+        // ' - ' и текст, строго после символа ровно, без попытки центрирования
+        try {
+            std::string rest = " - " + text;
+            tcod::print(console, {entryX + 1, legendY}, rest.c_str(), legendLabelColor, std::nullopt);
+        } catch (const std::exception&) {}
+        legendY++;
+    };
+
+    
+    // Элементы легенды - Мобы
+    printLegendEntry('@', "Hero", tcod::ColorRGB{100, 200, 255});
+    printLegendEntry('r', "Rat", tcod::ColorRGB{255, 50, 50});
+    printLegendEntry('B', "Bear", tcod::ColorRGB{139, 69, 19});
+    printLegendEntry('S', "Snake", tcod::ColorRGB{60, 130, 60});
+    printLegendEntry('g', "Ghost", tcod::ColorRGB{170, 170, 170});
+    printLegendEntry('C', "Crab", tcod::ColorRGB{255, 140, 0});
+    
+    // Строка тире после мобов
+    for (int x = 0; x < rightPanelWidth; ++x) {
+        if (console.in_bounds({rightPanelStartX + x, legendY})) {
+            console.at({rightPanelStartX + x, legendY}).ch = '-';
+            console.at({rightPanelStartX + x, legendY}).fg = legendLabelColor;
+            console.at({rightPanelStartX + x, legendY}).bg = black;
+        }
+    }
+    legendY++;
+    
+    // Предметы (не квесты!)
+    printLegendEntry('$', "Medkit", tcod::ColorRGB{255, 255, 0});
+    printLegendEntry('+', "Max HP", tcod::ColorRGB{0, 204, 0});
+    printLegendEntry('O', "Shield", tcod::ColorRGB{255, 255, 255});
+    
+    // Строка тире после предметов
+    for (int x = 0; x < rightPanelWidth; ++x) {
+        if (console.in_bounds({rightPanelStartX + x, legendY})) {
+            console.at({rightPanelStartX + x, legendY}).ch = '-';
+            console.at({rightPanelStartX + x, legendY}).fg = legendLabelColor;
+            console.at({rightPanelStartX + x, legendY}).bg = black;
+        }
+    }
+    legendY++;
+    
+    // Другие элементы (не мобы и не предметы)
+    printLegendEntry('.', "Trap", tcod::ColorRGB{40, 40, 40});
+    printLegendEntry('#', "Stair", tcod::ColorRGB{200, 200, 200});
+    
+    // === НИЖНЯЯ ПАНЕЛЬ ===
+    const tcod::ColorRGB bottomPanelColor{200, 200, 200};
+    
+    // Слева: управление в виде столбца (сверху вниз)
+    bool isPlayerControlsInverted = false;
+    for (const auto& enemy : enemies) {
+        if (enemy.symbol == SYM_CRAB && enemy.crabAttachedToPlayer) {
+            isPlayerControlsInverted = true;
+            break;
+        }
+    }
+    
+    // Слева внизу: каждый блок управления в отдельной "рамке" из тире (как на твоём скриншоте)
+    int controlsBlockStartY = bottomPanelY - 9; // Блок WASD, QEZC, ESC по 3 строки вниз
+    if (controlsBlockStartY < gameAreaStartY) controlsBlockStartY = gameAreaStartY;
+    auto printControlBox = [&](int boxTopY, const char* txt) {
+        // Верхняя линия
+        for (int x = 0; x < leftPanelWidth; ++x) {
+            if (console.in_bounds({x, boxTopY})) {
+                console.at({x, boxTopY}).ch = '-';
+                console.at({x, boxTopY}).fg = bottomPanelColor;
+                console.at({x, boxTopY}).bg = black;
+            }
+        }
+        // Надпись по центру
+        int len = static_cast<int>(strlen(txt));
+        int cx = std::max(0, leftPanelWidth / 2 - len / 2);
+        if (console.in_bounds({cx, boxTopY + 1})) {
+            try { tcod::print(console, {cx, boxTopY + 1}, txt, bottomPanelColor, std::nullopt); } catch (const std::exception&) {}
+        }
+        // Нижняя линия
+        for (int x = 0; x < leftPanelWidth; ++x) {
+            if (console.in_bounds({x, boxTopY + 2})) {
+                console.at({x, boxTopY + 2}).ch = '-';
+                console.at({x, boxTopY + 2}).fg = bottomPanelColor;
+                console.at({x, boxTopY + 2}).bg = black;
+            }
+        }
+    };
+    const char* wasdText = isPlayerControlsInverted ? "[?][?][?][?]" : "[W] [A] [S] [D]";
+    const char* qezcText = isPlayerControlsInverted ? "[?] [E] [?] [C]" : "[Q] [E] [Z] [C]";
+    const char* escText = "[ESC]";
+    printControlBox(controlsBlockStartY, wasdText);
+    printControlBox(controlsBlockStartY + 3, qezcText);
+    printControlBox(controlsBlockStartY + 6, escText);
+    
+    // Справа внизу: блок Floor оформляем как Legend — линия, подпись, линия, под ней римская цифра
+    std::string floorLabel = "Floor";
+    std::string floorLevel = toRoman(level);
+    // Управляемое положение блока Floor (можно поднимать/опускать весь блок)
+    // Делаем так, чтобы нижняя тире совпадала с нижней линией последнего блока управления (ESC).
+    int controlBottom = controlsBlockStartY + 8; // ESC блок: controlsBlockStartY + 6, плюс 2 строки (текст + нижняя линия)
+    int floorBlockBottomLineY = controlBottom; // если сдвинешь controlsBlockStartY — Floor поедет синхронно
+    int floorBlockTop = floorBlockBottomLineY - 4; // 5 строк: линия, текст, линия, римская, линия
+    // верхняя линия
+    for (int x = 0; x < rightPanelWidth; ++x) {
+        if (console.in_bounds({rightPanelStartX + x, floorBlockTop})) {
+            console.at({rightPanelStartX + x, floorBlockTop}).ch = '-';
+            console.at({rightPanelStartX + x, floorBlockTop}).fg = bottomPanelColor;
+            console.at({rightPanelStartX + x, floorBlockTop}).bg = black;
+        }
+    }
+    // подпись Floor по центру
+    int floorLabelX = rightPanelStartX + (rightPanelWidth - static_cast<int>(floorLabel.size())) / 2;
+    try {
+        tcod::print(console, {floorLabelX, floorBlockTop + 1}, floorLabel.c_str(), bottomPanelColor, std::nullopt);
+    } catch (const std::exception&) {}
+    // линия после подписи Floor
+    for (int x = 0; x < rightPanelWidth; ++x) {
+        if (console.in_bounds({rightPanelStartX + x, floorBlockTop + 2})) {
+            console.at({rightPanelStartX + x, floorBlockTop + 2}).ch = '-';
+            console.at({rightPanelStartX + x, floorBlockTop + 2}).fg = bottomPanelColor;
+            console.at({rightPanelStartX + x, floorBlockTop + 2}).bg = black;
+        }
+    }
+    // римская цифра по центру ниже блока
+    int floorLevelX = rightPanelStartX + (rightPanelWidth - static_cast<int>(floorLevel.size())) / 2;
+    try {
+        tcod::print(console, {floorLevelX, floorBlockTop + 3}, floorLevel.c_str(), bottomPanelColor, std::nullopt);
+    } catch (const std::exception&) {}
+    // новая нижняя линия (легко двигается и совпадает с controlBottom)
+    for (int x = 0; x < rightPanelWidth; ++x) {
+        if (console.in_bounds({rightPanelStartX + x, floorBlockTop + 4})) {
+            console.at({rightPanelStartX + x, floorBlockTop + 4}).ch = '-';
+            console.at({rightPanelStartX + x, floorBlockTop + 4}).fg = bottomPanelColor;
+            console.at({rightPanelStartX + x, floorBlockTop + 4}).bg = black;
+        }
+    }
+    
+    // По центру нижней панели: дополнительная информация (щит, квесты)
+    int centerX = (gameAreaStartX + gameAreaStartX + Map::WIDTH) / 2;
+    std::vector<std::string> centerInfo;
+    
+    // Не пишем больше текст о щите, только визуальная полоса!
+    // if (shieldTurns > 0) {
+    //     snprintf(buffer, sizeof(buffer), "Shield: %d", shieldTurns);
+    //     centerInfo.push_back(buffer);
+    // }
+    
+    if (questActive && questTarget > 0) {
+        snprintf(buffer, sizeof(buffer), "Quest: %d/%d", questKills, questTarget);
+        centerInfo.push_back(buffer);
+    }
+    
+    // Выводим информацию по центру нижней панели
+    int centerY = bottomPanelY;
+    for (const std::string& info : centerInfo) {
+        int infoX = centerX - static_cast<int>(info.size()) / 2;
+        if (infoX < gameAreaStartX) infoX = gameAreaStartX;
+        if (infoX + static_cast<int>(info.size()) > gameAreaStartX + Map::WIDTH) {
+            infoX = gameAreaStartX + Map::WIDTH - static_cast<int>(info.size());
+        }
+        try {
+            tcod::print(console, {infoX, centerY}, info.c_str(), bottomPanelColor, std::nullopt);
+        } catch (const std::exception&) {}
+        centerY++;
     }
 }
 
@@ -675,32 +793,120 @@ void Graphics::clearScreen()
 // Ждем нажатия клавиши. Возвращаем true если что-то нажали.
 bool Graphics::getInput(int& key)
 {
-    // Сначала обрабатываем событие закрытия окна (Alt+F4/крестик)
+    // Обрабатываем все события SDL (включая закрытие окна) - НЕБЛОКИРУЮЩИЙ ввод!
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
         if (ev.type == SDL_QUIT) {
             key = TCODK_ESCAPE;
             return true;
         }
+        // Обрабатываем нажатия клавиш через SDL
+        if (ev.type == SDL_KEYDOWN) {
+            SDL_Keycode sym = ev.key.keysym.sym;
+            SDL_Keymod mod = static_cast<SDL_Keymod>(ev.key.keysym.mod);
+            
+            // F11 для полноэкранного режима
+            if (sym == SDLK_F11) {
+                key = TCODK_F11;
+                return true;
+            }
+            
+            // ESC
+            if (sym == SDLK_ESCAPE) {
+                key = TCODK_ESCAPE;
+                return true;
+            }
+            
+            // Стрелки
+            if (sym == SDLK_UP) {
+                key = TCODK_UP;
+                return true;
+            }
+            if (sym == SDLK_DOWN) {
+                key = TCODK_DOWN;
+                return true;
+            }
+            if (sym == SDLK_LEFT) {
+                key = TCODK_LEFT;
+                return true;
+            }
+            if (sym == SDLK_RIGHT) {
+                key = TCODK_RIGHT;
+                return true;
+            }
+            
+            // Буквы (только если не зажаты модификаторы)
+            if ((mod & (KMOD_CTRL | KMOD_ALT | KMOD_GUI)) == 0) {
+                if (sym >= SDLK_a && sym <= SDLK_z) {
+                    key = static_cast<int>(sym); // 'a'-'z'
+                    return true;
+                }
+            }
+        }
     }
-
-    TCOD_key_t k = TCOD_console_wait_for_keypress(true);
-
-    // Проверяем F11 для полноэкранного режима
-    if (k.vk == TCODK_F11) {
-        key = TCODK_F11;
+    
+    // Также проверяем через libtcod (на случай если SDL не поймал)
+    TCOD_key_t k = TCOD_console_check_for_keypress(TCOD_KEY_PRESSED);
+    if (k.vk != TCODK_NONE) {
+        if (k.vk == TCODK_F11) {
+            key = TCODK_F11;
+            return true;
+        }
+        if (k.c != 0) {
+            key = k.c;
+            return true;
+        }
+        key = k.vk;
         return true;
     }
+    
+    return false; // Ничего не нажато - НЕ БЛОКИРУЕМ, просто возвращаем false
+}
 
-    // Если есть символ (буква), отдаем его
-    if (k.c != 0) {
-        key = k.c; // 'w','a','s','d','q' и т.п.
+// Получает позицию мыши на карте. Возвращает true если мышь над игровой областью.
+bool Graphics::getMousePosition(int& mapX, int& mapY)
+{
+    int mouseX, mouseY;
+    SDL_GetMouseState(&mouseX, &mouseY);
+    
+    // Конвертируем координаты мыши в координаты консоли через context
+    // Используем явное указание типа для устранения неоднозначности
+    std::array<double, 2> pixelPos = {static_cast<double>(mouseX), static_cast<double>(mouseY)};
+    auto mouseTile = context->pixel_to_tile_coordinates(pixelPos);
+    int consoleX = static_cast<int>(mouseTile[0]);
+    int consoleY = static_cast<int>(mouseTile[1]);
+    
+    // Проверяем, что мышь в игровой области (не в UI панелях)
+    const int gameAreaStartX = leftPanelWidth;
+    const int gameAreaStartY = std::max(topPanelHeight, 2);
+    
+    if (consoleX >= gameAreaStartX && consoleX < gameAreaStartX + Map::WIDTH &&
+        consoleY >= gameAreaStartY && consoleY < gameAreaStartY + Map::HEIGHT) {
+        mapX = consoleX - gameAreaStartX;
+        mapY = consoleY - gameAreaStartY;
         return true;
     }
+    
+    return false;
+}
 
-    // Иначе отдаем код специальной клавиши (стрелки, ESC)
-    key = k.vk;
-    return (key != TCODK_NONE);
+// Рисует название справа от символа при наведении мыши
+void Graphics::drawHoverName(int mapX, int mapY, const std::string& name, const tcod::ColorRGB& color)
+{
+    const int gameAreaStartX = leftPanelWidth;
+    const int gameAreaStartY = std::max(topPanelHeight, 2);
+    
+    // Рисуем каждую букву справа от символа (начиная с позиции mapX + 1)
+    for (size_t i = 0; i < name.size(); ++i) {
+        int screenX = gameAreaStartX + mapX + 1 + static_cast<int>(i);
+        int screenY = gameAreaStartY + mapY;
+        
+        if (console.in_bounds({screenX, screenY})) {
+            console.at({screenX, screenY}).ch = name[i];
+            console.at({screenX, screenY}).fg = color;
+            console.at({screenX, screenY}).bg = tcod::ColorRGB{0, 0, 0};
+        }
+    }
 }
 
 // Переключение полноэкранного режима

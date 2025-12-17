@@ -26,6 +26,11 @@ private:
     tcod::Console console;
     int screenWidth;
     int screenHeight;
+    // Размеры UI‑слоёв, которые приходят из main.cpp.
+    int leftPanelWidth;
+    int rightPanelWidth;
+    int topPanelHeight;
+    int bottomPanelHeight;
     
     // Цвета для разных объектов
     tcod::ColorRGB colorPlayer;
@@ -41,14 +46,22 @@ private:
     float torchX;
 
 public:
-    Graphics(int width, int height);
+    // width/height — полный размер экрана.
+    // Остальные параметры задают толщину UI‑панелей (те же значения,
+    // которые используются в main.cpp при расчёте screenWidth/screenHeight).
+    Graphics(int width,
+             int height,
+             int leftPanelWidth,
+             int rightPanelWidth,
+             int topPanelHeight,
+             int bottomPanelHeight);
     ~Graphics();
 
     void drawMap(const Map& map, int playerX, int playerY, int torchRadius);
     void drawEntity(const Entity& entity);
     // Специальный метод для игрока с динамическим цветом.
-    // Параметр isPoisoned позволяет временно перекрасить игрока в ядовито-зелёный цвет.
-    void drawPlayer(const Entity& player, bool isPoisoned);
+    // isPoisoned — отравление, hasShield — активный щит (игрок подсвечивается белым).
+    void drawPlayer(const Entity& player, bool isPoisoned, bool hasShield);
     void drawItem(const Item& item);
     void drawUI(const Entity& player,
                 const std::vector<Entity>& enemies,
@@ -57,6 +70,7 @@ public:
                 bool isPlayerPoisoned,
                 bool isPlayerGhostCursed,
                 int shieldTurns,
+                int shieldWhiteSegments,
                 bool questActive,
                 int questKills,
                 int questTarget);
@@ -65,6 +79,11 @@ public:
     // Читает одну клавишу. Возвращает true если что-то нажали.
     // В key кладем либо символ ('w','a','s','d','q'), либо код стрелки (TCODK_UP и т.п.)
     bool getInput(int& key);
+    // Получает позицию мыши на карте. Возвращает true если мышь над игровой областью.
+    // mapX, mapY - координаты на карте (0..WIDTH-1, 0..HEIGHT-1)
+    bool getMousePosition(int& mapX, int& mapY);
+    // Рисует название справа от символа при наведении мыши
+    void drawHoverName(int mapX, int mapY, const std::string& name, const tcod::ColorRGB& color);
     // Переключение полноэкранного режима
     void toggleFullscreen();
 };

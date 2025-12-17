@@ -62,7 +62,7 @@ public:
     void addItem(int x, int y, int healAmount, int maxHealthBoost, char symbol);
     void addHealItem(int x, int y, int healAmount);
     void addMaxHealthItem(int x, int y, int maxHealthBoost);
-    void addGhostItem(int x, int y);  // Прозрачный предмет '.'
+    void addTrapItem(int x, int y);  // Ловушка (мина) '.'
     void addShieldItem(int x, int y); // Щит "O"
     void addQuestItem(int x, int y);  // Квестовый предмет '?'
     Item* getItemAt(int x, int y);

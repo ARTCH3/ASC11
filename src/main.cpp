@@ -6,16 +6,25 @@
 // затем запускаем основной игровой цикл.
 int main()
 {
-    // Размеры окна: по ширине карты, по высоте — карта + HUD.
-    // Так мир и интерфейс заполняют всю консоль без пустых полос.
-    const int screenWidth = Map::WIDTH;
-    const int screenHeight = Map::HEIGHT + 9;
+    // Размеры окна: карта в центре (80x36).
+    // <<< Можешь менять ширину боковых панелей и высоту нижней панели вот здесь >>>
+    const int leftPanelWidth = 15;   // ширина левого UI-слоя
+    const int rightPanelWidth = 15; // ширина правого UI-слоя
+    const int topPanelHeight = 1;   // верхняя панель (HP‑линия)
+    const int bottomPanelHeight = 6; // нижняя панель (управление + Floor + центр)
+    const int screenWidth = leftPanelWidth + Map::WIDTH + rightPanelWidth;
+    const int screenHeight = topPanelHeight + Map::HEIGHT + bottomPanelHeight;
 
     // Создаем состояние игры
     GameState game;
 
-    // Создаем объект для рисования
-    Graphics graphics(screenWidth, screenHeight);
+    // Создаем объект для рисования и передаем размеры панелей.
+    Graphics graphics(screenWidth,
+                      screenHeight,
+                      leftPanelWidth,
+                      rightPanelWidth,
+                      topPanelHeight,
+                      bottomPanelHeight);
 
     // Инициализируем FOV
     game.map.computeFOV(game.player.pos.x, game.player.pos.y, game.torchRadius, true);
@@ -49,10 +58,10 @@ int main()
             graphics.drawEntity(exitEntity);
         }
 
-        // Рисуем игрока (с динамическим цветом в зависимости от здоровья,
-        // особой ядовито-зелёной раскраской во время отравления и
-        // независимым визуальным эффектом от призрака, который прячет HP в HUD).
-        graphics.drawPlayer(game.player, game.isPlayerPoisoned);
+        // Рисуем игрока (цвет зависит от здоровья, эффектов яда и щита).
+        graphics.drawPlayer(game.player,
+                            game.isPlayerPoisoned,
+                            game.shieldTurns > 0);
 
         // Рисуем UI.
         // При действии яда полоска HP меняет цвет на "ядовитый" зелёный,
@@ -65,9 +74,54 @@ int main()
                         game.isPlayerPoisoned,
                         game.isPlayerGhostCursed,
                         game.shieldTurns,
+                        game.shieldWhiteSegments,
                         game.questActive,
                         game.questKills,
                         game.questTarget);
+
+        // Проверяем наведение мыши и отображаем названия
+        int mouseMapX, mouseMapY;
+        if (graphics.getMousePosition(mouseMapX, mouseMapY)) {
+            // Проверяем мобов
+            for (const auto& enemy : game.enemies) {
+                if (enemy.isAlive() && enemy.pos.x == mouseMapX && enemy.pos.y == mouseMapY &&
+                    game.map.isVisible(enemy.pos.x, enemy.pos.y)) {
+                    std::string name;
+                    if (enemy.symbol == SYM_BEAR) name = "Bear";
+                    else if (enemy.symbol == SYM_SNAKE) name = "Snake";
+                    else if (enemy.symbol == SYM_GHOST) name = "Ghost";
+                    else if (enemy.symbol == SYM_CRAB) name = "Crab";
+                    else name = "Rat";
+                    // Добавляем HP к имени: имя 1/3
+                    char buffer[32];
+                    snprintf(buffer, sizeof(buffer), "%d/%d", enemy.health, enemy.maxHealth);
+                    std::string nameWithHP = name + " " + buffer;
+                    graphics.drawHoverName(mouseMapX, mouseMapY, nameWithHP, tcod::ColorRGB{enemy.color.r, enemy.color.g, enemy.color.b});
+                    break;
+                }
+            }
+            // Проверяем предметы
+            for (const auto& item : game.map.items) {
+                if (item.pos.x == mouseMapX && item.pos.y == mouseMapY &&
+                    game.map.isVisible(item.pos.x, item.pos.y)) {
+                    std::string name;
+                    tcod::ColorRGB color{200, 200, 200};
+                    if (item.symbol == SYM_ITEM) { name = "Medkit"; color = tcod::ColorRGB{255, 255, 0}; }
+                    else if (item.symbol == SYM_MAX_HP) { name = "Max HP"; color = tcod::ColorRGB{0, 204, 0}; }
+                    else if (item.symbol == SYM_SHIELD) { name = "Shield"; color = tcod::ColorRGB{255, 255, 255}; }
+                    else if (item.symbol == SYM_TRAP) { name = "Trap"; color = tcod::ColorRGB{40, 40, 40}; }
+                    if (!name.empty()) {
+                        graphics.drawHoverName(mouseMapX, mouseMapY, name, color);
+                        break;
+                    }
+                }
+            }
+            // Проверяем лестницу
+            if (game.map.isExit(mouseMapX, mouseMapY) &&
+                game.map.isVisible(mouseMapX, mouseMapY)) {
+                graphics.drawHoverName(mouseMapX, mouseMapY, "Exit", tcod::ColorRGB{200, 200, 200});
+            }
+        }
 
         // Обновляем экран
         graphics.refreshScreen();
