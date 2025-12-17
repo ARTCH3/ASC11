@@ -69,8 +69,12 @@ GameState::GameState()
       shieldWhiteSegments(0),
       visionTurns(0), // Количество ходов с полной подсветкой
       questActive(false),
+      questType(QUEST_KILL),
+      questTargets(),
+      questProgress(),
       questTarget(0),
       questKills(0),
+      perkQuestHighlightEnabled(false),
       isPerkChoiceActive(false),
       perkBonusRats(0),
       perkBonusHeals(0),
@@ -244,6 +248,16 @@ void GameState::processCombat()
             }
             // Отслеживаем убийства для квеста
             if (questActive && wasAlive && !enemy.isAlive()) {
+                if (questType == QUEST_KILL) {
+                    // Ищем цель квеста с таким символом моба
+                    for (size_t i = 0; i < questTargets.size(); ++i) {
+                        if (questTargets[i].first == enemy.symbol) {
+                            questProgress[i]++;
+                            break;
+                        }
+                    }
+                }
+                // Для обратной совместимости
                 questKills++;
             }
         }
@@ -432,6 +446,9 @@ void GameState::processCombat()
     if (!player.isAlive()) {
         // Завершаем квест и обнуляем состояние
         questActive = false;
+        questType = QUEST_KILL;
+        questTargets.clear();
+        questProgress.clear();
         questKills = 0;
         questTarget = 0;
         // Показываем экран смерти вместо мгновенного рестарта
@@ -466,6 +483,9 @@ void GameState::updatePoison()
     // Если яд добил игрока — показываем экран смерти.
     if (!player.isAlive()) {
         questActive = false;
+        questType = QUEST_KILL;
+        questTargets.clear();
+        questProgress.clear();
         questKills = 0;
         questTarget = 0;
         isDeathScreenActive = true;
@@ -612,6 +632,9 @@ void GameState::updateCrabInversion()
     // Если урон от отцепления убил игрока — показываем экран смерти.
     if (!player.isAlive()) {
         questActive = false;
+        questType = QUEST_KILL;
+        questTargets.clear();
+        questProgress.clear();
         questKills = 0;
         questTarget = 0;
         isDeathScreenActive = true;
@@ -686,13 +709,24 @@ void GameState::processItems()
                 shieldWhiteSegments = 0;         // нет "повреждённых" делений
             }
 
-            // Квестовый предмет '?' запускает задание на убийство N монстров.
-            if (item.symbol == SYM_QUEST && !questActive) {
-                questActive = true;
-                questKills = 0;
-                questTarget = 5 + (std::rand() % 6); // от 5 до 10
+            // Квестовый предмет '?' запускает или обновляет задание
+            if (item.symbol == SYM_QUEST) {
+                // Если квест уже активен, обновляем его полностью
+                // Если не активен, создаем новый
+                generateQuest();
             }
 
+            // Отслеживаем сбор предметов для квеста
+            if (questActive && questType == QUEST_COLLECT && item.symbol != SYM_QUEST) {
+                // Ищем цель квеста с таким символом предмета
+                for (size_t i = 0; i < questTargets.size(); ++i) {
+                    if (questTargets[i].first == item.symbol) {
+                        questProgress[i]++;
+                        break;
+                    }
+                }
+            }
+            
             // Подсчитываем собранные предметы для статистики
             if (item.symbol == SYM_ITEM) itemsMedkit++;
             else if (item.symbol == SYM_MAX_HP) itemsMaxHP++;
@@ -710,6 +744,83 @@ void GameState::processItems()
             // Убираем предмет
             map.removeItem(i);
         }
+    }
+}
+
+// Генерация нового квеста (убийство или сбор предметов)
+void GameState::generateQuest()
+{
+    questActive = true;
+    questTargets.clear();
+    questProgress.clear();
+    
+    // Случайно выбираем тип квеста (убийство или сбор)
+    int questTypeChoice = std::rand() % 2;
+    questType = (questTypeChoice == 0) ? QUEST_KILL : QUEST_COLLECT;
+    
+    // Определяем количество целей (только четное: 2, 4, 6, 8 для равномерного распределения цветов на 5 букв "Quest")
+    int numTargets = 2 + (std::rand() % 4) * 2; // 2, 4, 6, 8
+    
+    if (questType == QUEST_KILL) {
+        // Квест на убийство мобов
+        // Доступные мобы для квеста (только разблокированные)
+        std::vector<int> availableMobs;
+        if (unlockedRat) availableMobs.push_back(SYM_ENEMY);
+        if (unlockedBear) availableMobs.push_back(SYM_BEAR);
+        if (unlockedSnake) availableMobs.push_back(SYM_SNAKE);
+        if (unlockedGhost) availableMobs.push_back(SYM_GHOST);
+        if (unlockedCrab) availableMobs.push_back(SYM_CRAB);
+        
+        if (availableMobs.empty()) {
+            // Если нет доступных мобов, создаем простой квест на убийство любых
+            questTargets.push_back({SYM_ENEMY, 3 + (std::rand() % 8)}); // 3-10
+            questProgress.push_back(0);
+        } else {
+            // Выбираем случайные мобы для квеста
+            for (int i = 0; i < numTargets && i < static_cast<int>(availableMobs.size()); ++i) {
+                int mobIndex = std::rand() % availableMobs.size();
+                int mobSymbol = availableMobs[mobIndex];
+                int targetCount = 3 + (std::rand() % 8); // 3-10
+                questTargets.push_back({mobSymbol, targetCount});
+                questProgress.push_back(0);
+                // Удаляем выбранного моба из списка, чтобы не повторяться
+                availableMobs.erase(availableMobs.begin() + mobIndex);
+            }
+        }
+    } else {
+        // Квест на сбор предметов
+        // Доступные предметы для квеста (только разблокированные)
+        std::vector<int> availableItems;
+        if (unlockedMedkit) availableItems.push_back(SYM_ITEM);
+        if (unlockedMaxHP) availableItems.push_back(SYM_MAX_HP);
+        if (unlockedShield) availableItems.push_back(SYM_SHIELD);
+        if (unlockedTrap) availableItems.push_back(SYM_TRAP);
+        
+        if (availableItems.empty()) {
+            // Если нет доступных предметов, создаем простой квест на сбор аптечек
+            questTargets.push_back({SYM_ITEM, 3 + (std::rand() % 8)}); // 3-10
+            questProgress.push_back(0);
+        } else {
+            // Выбираем случайные предметы для квеста
+            for (int i = 0; i < numTargets && i < static_cast<int>(availableItems.size()); ++i) {
+                int itemIndex = std::rand() % availableItems.size();
+                int itemSymbol = availableItems[itemIndex];
+                int targetCount = 3 + (std::rand() % 8); // 3-10
+                questTargets.push_back({itemSymbol, targetCount});
+                questProgress.push_back(0);
+                // Удаляем выбранный предмет из списка, чтобы не повторяться
+                availableItems.erase(availableItems.begin() + itemIndex);
+            }
+        }
+    }
+    
+    // Для обратной совместимости обновляем старые поля
+    if (questTargets.size() == 1 && questType == QUEST_KILL) {
+        questTarget = questTargets[0].second;
+        questKills = questProgress[0];
+    } else {
+        questTarget = 0;
+        questKills = 0;
     }
 }
 
@@ -884,13 +995,26 @@ void handleInput(GameState& state, int key)
     int killsBefore = state.questKills;
     state.processCombat();
     state.processItems();
-    // Проверяем выполнение квеста после возможных убийств
-    if (state.questActive && state.questKills >= state.questTarget) {
-        state.questActive = false;
-        state.questKills = 0;
-        state.questTarget = 0;
-        // Активируем эффект полной подсветки на следующий ход
-        state.visionTurns = 1;
+    // Проверяем выполнение квеста после возможных убийств/сбора
+    if (state.questActive) {
+        bool questCompleted = true;
+        // Проверяем, все ли цели выполнены
+        for (size_t i = 0; i < state.questTargets.size(); ++i) {
+            if (state.questProgress[i] < state.questTargets[i].second) {
+                questCompleted = false;
+                break;
+            }
+        }
+        
+        if (questCompleted) {
+            state.questActive = false;
+            state.questTargets.clear();
+            state.questProgress.clear();
+            state.questKills = 0;
+            state.questTarget = 0;
+            // Активируем эффект полной подсветки на следующий ход
+            state.visionTurns = 1;
+        }
     }
 
     // Обновляем врагов
@@ -1499,6 +1623,8 @@ void GameState::applyLevelChoice(int choiceIndex)
             // Только на следующий уровень (можно добавить временный флаг)
             perkShowExitFirst3Steps = true;  // Временно
         }
+        // Подсветка квеста цветом
+        perkQuestHighlightEnabled = true;
         
         // Разблокируем медведей и щиты
         unlockedBear = true;
@@ -1508,6 +1634,7 @@ void GameState::applyLevelChoice(int choiceIndex)
         collectedPerks.push_back("Bear with poison");
         collectedPerks.push_back("More shields");
         collectedPerks.push_back("Show exit hint");
+        collectedPerks.push_back("Quest highlight");
     } else if (choiceIndex == 3) {
         // 3) +2 snake, выше шанс spawna maxHP‑предметов, радиус факела сильно сужен
         // ТОЛЬКО на следующий уровень.
@@ -1572,6 +1699,15 @@ void GameState::restartGame()
     torchRadius = 3; // Возвращаем базовый радиус факела (чуть больше чем у светлячка = 1)
     stepsOnCurrentLevel = 0;
     showExitBecauseCleared = false;
+    perkQuestHighlightEnabled = false;
+    
+    // Сбрасываем квесты
+    questActive = false;
+    questType = QUEST_KILL;
+    questTargets.clear();
+    questProgress.clear();
+    questTarget = 0;
+    questKills = 0;
     
     // Сбрасываем статистику
     killsRat = 0;

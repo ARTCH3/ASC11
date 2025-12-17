@@ -18,9 +18,25 @@ struct GameState {
     int shieldTurns; // Количество ходов с эффектом щита
     int shieldWhiteSegments; // сколько "белых" делений щита (урон по щиту)
     int visionTurns; // Количество ходов с полной подсветкой карты
-    bool questActive; // Активен ли квест на убийство монстров
-    int questTarget;  // Сколько монстров нужно убить
-    int questKills;   // Сколько монстров уже убито в квесте
+    // Расширенная система квестов
+    bool questActive; // Активен ли квест
+    enum QuestType {
+        QUEST_KILL,  // Убийство мобов
+        QUEST_COLLECT // Сбор предметов
+    };
+    QuestType questType; // Тип квеста
+    // Цели квеста: пары (символ моба/предмета, количество)
+    // Для убийства: SYM_ENEMY, SYM_BEAR, SYM_SNAKE, SYM_GHOST, SYM_CRAB
+    // Для сбора: SYM_ITEM, SYM_MAX_HP, SYM_SHIELD, SYM_TRAP
+    std::vector<std::pair<int, int>> questTargets; // (символ, цель)
+    std::vector<int> questProgress; // Прогресс по каждой цели (индекс соответствует questTargets)
+    
+    // Старые поля для совместимости (используются только для простых квестов)
+    int questTarget;  // Сколько монстров нужно убить (устарело, используется только для обратной совместимости)
+    int questKills;   // Сколько монстров уже убито (устарело)
+    
+    // Модификатор для подсветки квеста цветом
+    bool perkQuestHighlightEnabled = false;
 
     // --- Прогрессия между этажами (перки) ---
     // Активен ли сейчас экран выбора перка при переходе по лестнице.
@@ -124,6 +140,7 @@ struct GameState {
     void updateEnemies(); // Обновление позиций врагов
     void processCombat(); // Обработка боя
     void processItems(); // Обработка предметов
+    void generateQuest(); // Генерация нового квеста (убийство или сбор)
     void generateNewLevel(); // Генерация нового уровня
     bool checkExit(); // Проверка перехода на следующий уровень
     // Применить выбранный перк (1, 2 или 3) и перейти на следующий уровень.
