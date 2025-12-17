@@ -16,6 +16,7 @@ struct GameState {
     int torchRadius; // Радиус факела для FOV
     int level;       // Текущий уровень (начинается с 1)
     int shieldTurns; // Количество ходов с эффектом щита
+    int shieldWhiteSegments; // сколько "белых" делений щита (урон по щиту)
     int visionTurns; // Количество ходов с полной подсветкой карты
     bool questActive; // Активен ли квест на убийство монстров
     int questTarget;  // Сколько монстров нужно убить
@@ -56,6 +57,9 @@ struct GameState {
     void updateCrabInversion();
     // Вешаем на игрока эффект краба: инвертируем управление на случайное число ходов.
     void applyCrabInversionToPlayer(int minTurns, int maxTurns);
+
+    // Применяем урон к щиту, возвращаем сколько урона прошло по здоровью.
+    int applyShieldHit(int damage);
 };
 
 // Обработка ввода и простейшая логика перемещения игрока.

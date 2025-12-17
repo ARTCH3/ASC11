@@ -65,8 +65,9 @@ GameState::GameState()
       isRunning(true),
       torchRadius(8), // Радиус факела
       level(1),       // Начинаем с уровня 1
-      shieldTurns(0), // Эффект щита неактивен
-      visionTurns(0), // Эффект полной подсветки неактивен
+      shieldTurns(0), // Сколько синих делений щита осталось
+      shieldWhiteSegments(0),
+      visionTurns(0), // Количество ходов с полной подсветкой
       questActive(false),
       questTarget(0),
       questKills(0)
@@ -254,26 +255,28 @@ void GameState::processCombat()
 
         if (isAdjacent) {
             if (enemy.symbol == SYM_SNAKE) {
-                // Укус змеи: моментально снимаем ~1% HP
-                // и вешаем яд, который будет снимать ~1% в ход.
+                // Укус змеи игнорирует щит! Моментально снимаем ~1% HP
                 int instantDamage = std::max(1, player.maxHealth / 100);
                 player.takeDamage(instantDamage);
 
-                // Каждый новый укус не накапливает яд, а просто обновляет его длительность.
+                // Яд игнорирует щит
                 applyPoisonToPlayer(5, 10);
             } else if (enemy.symbol == SYM_GHOST) {
                 // Призрак "прицепляется" к игроку:
                 // наносит примерно 1% от максимального HP единоразово
                 // и прячет информацию о здоровье на несколько ходов.
                 int ghostDamage = std::max(1, player.maxHealth / 100);
-                player.takeDamage(ghostDamage);
+                int remaining = applyShieldHit(ghostDamage);
+                if (remaining > 0) {
+                    player.takeDamage(remaining);
 
-                // Каждый новый контакт просто обновляет длительность эффекта.
-                applyGhostCurseToPlayer(8, 12);
+                    // Каждый новый контакт просто обновляет длительность эффекта.
+                    applyGhostCurseToPlayer(8, 12);
 
-                // После успешной атаки и наложения эффекта призрак "рассеивается":
-                // он больше не существует на карте.
-                enemy.health = 0;
+                    // После успешной атаки и наложения эффекта призрак "рассеивается":
+                    // он больше не существует на карте.
+                    enemy.health = 0;
+                }
             } else if (enemy.symbol == SYM_CRAB) {
                 // Особое поведение краба.
                 // Если управление ещё НЕ инвертировано и краб не в откате,
@@ -291,11 +294,17 @@ void GameState::processCombat()
                     // Если эффект уже висит (или краб недавно отцепился),
                     // он не может прицепиться и просто наносит небольшой урон (~1% HP).
                     int crabDamage = std::max(1, player.maxHealth / 100);
-                    player.takeDamage(crabDamage);
+                    int remaining = applyShieldHit(crabDamage);
+                    if (remaining > 0) {
+                        player.takeDamage(remaining);
+                    }
                 }
             } else {
                 // Обычная атака
-                player.takeDamage(enemy.damage);
+                int remaining = applyShieldHit(enemy.damage);
+                if (remaining > 0) {
+                    player.takeDamage(remaining);
+                }
             }
             
             // Если это медведь, отбрасываем игрока
@@ -552,6 +561,25 @@ void GameState::updateCrabInversion()
     }
 }
 
+// Щит поглощает урон по делениям.
+// Возвращает, сколько урона осталось нанести по здоровью игрока.
+int GameState::applyShieldHit(int damage)
+{
+    int remaining = damage;
+    while (remaining > 0 && (shieldTurns > 0 || shieldWhiteSegments > 0)) {
+        if (shieldTurns > 0) {
+            // Сначала тратим синее деление: оно становится белым.
+            --shieldTurns;
+            ++shieldWhiteSegments;
+        } else if (shieldWhiteSegments > 0) {
+            // Если синих нет, "сжигаем" белые в серые.
+            --shieldWhiteSegments;
+        }
+        --remaining;
+    }
+    return remaining;
+}
+
 // Вешаем на игрока эффект краба: инвертируем управление на случайное число ходов.
 void GameState::applyCrabInversionToPlayer(int minTurns, int maxTurns)
 {
@@ -586,8 +614,8 @@ void GameState::processItems()
                 }
             }
 
-            // Прозрачный предмет '.' наносит 15% от максимального здоровья.
-            if (item.symbol == SYM_GHOST_ITEM) {
+            // Ловушка (мина) '.' наносит 15% от максимального здоровья (щит не защищает).
+            if (item.symbol == SYM_TRAP) {
                 int damage = std::max(1, player.maxHealth * 15 / 100);
                 player.health -= damage;
                 if (player.health < 0) {
@@ -595,9 +623,10 @@ void GameState::processItems()
                 }
             }
 
-            // Предмет-щит 'O' даёт защиту от откидывания (30 ходов).
+            // Предмет-щит 'O' даёт полный щит: количество делений равно ширине карты.
             if (item.symbol == SYM_SHIELD) {
-                shieldTurns = 30;
+                shieldTurns = Map::WIDTH;        // все деления синие
+                shieldWhiteSegments = 0;         // нет "повреждённых" делений
             }
 
             // Квестовый предмет '?' запускает задание на убийство N монстров.
@@ -703,10 +732,14 @@ void handleInput(GameState& state, int key)
     if (dx != 0 || dy != 0) {
         int newX = state.player.pos.x + dx;
         int newY = state.player.pos.y + dy;
-        // Если действует щит — уменьшаем количество ходов
-        if (state.shieldTurns > 0) {
-            state.shieldTurns--;
-        }
+            // Если действует щит — сначала "сжигаем" белые деления, затем синие.
+            if (state.shieldTurns > 0 || state.shieldWhiteSegments > 0) {
+                if (state.shieldWhiteSegments > 0) {
+                    state.shieldWhiteSegments--;
+                } else if (state.shieldTurns > 0) {
+                    state.shieldTurns--;
+                }
+            }
 
         // Проверяем границы
         if (state.map.inBounds(newX, newY)) {
@@ -824,10 +857,53 @@ void GameState::generateNewLevel()
     // Генерируем новую карту
     map.generate();
     
-    // Размещаем игрока в безопасном месте (левый верхний угол)
-    player.pos.x = 5;
-    player.pos.y = 5;
-    map.setCell(player.pos.x, player.pos.y, SYM_FLOOR);
+    // Размещаем игрока в безопасном месте с выходами (не в коробке!)
+    // Ищем проходимую клетку с минимум 2 выходами В ЦЕНТРЕ КАРТЫ (или очень рядом)
+    bool playerPlaced = false;
+    int centerX = Map::WIDTH / 2;
+    int centerY = Map::HEIGHT / 2;
+    int spawnRadius = 12; // Радиус поиска от центра (можно менять: меньше = ближе к центру)
+    for (int attempt = 0; attempt < 500 && !playerPlaced; ++attempt) {
+        // Спавним в центре или рядом с центром (±spawnRadius клеток)
+        int px = centerX - spawnRadius + std::rand() % (spawnRadius * 2 + 1);
+        int py = centerY - spawnRadius + std::rand() % (spawnRadius * 2 + 1);
+        // Ограничиваем границами карты
+        px = std::max(2, std::min(Map::WIDTH - 3, px));
+        py = std::max(2, std::min(Map::HEIGHT - 3, py));
+        
+        if (map.getCell(px, py) == SYM_FLOOR) {
+            // Проверяем что вокруг есть минимум 2 проходимых клетки (выходы)
+            int exits = 0;
+            if (map.isWalkable(px - 1, py)) exits++;
+            if (map.isWalkable(px + 1, py)) exits++;
+            if (map.isWalkable(px, py - 1)) exits++;
+            if (map.isWalkable(px, py + 1)) exits++;
+            
+            if (exits >= 2) {
+                player.pos.x = px;
+                player.pos.y = py;
+                map.setCell(player.pos.x, player.pos.y, SYM_FLOOR);
+                playerPlaced = true;
+            }
+        }
+    }
+    // Если не нашли подходящее место, ставим в центр и гарантируем выходы
+    if (!playerPlaced) {
+        player.pos.x = Map::WIDTH / 2;
+        player.pos.y = Map::HEIGHT / 2;
+        map.setCell(player.pos.x, player.pos.y, SYM_FLOOR);
+        // Гарантируем минимум 2 выхода вокруг игрока
+        int dirs[4][2] = {{-1,0}, {1,0}, {0,-1}, {0,1}};
+        int exitsCreated = 0;
+        for (int d = 0; d < 4 && exitsCreated < 2; ++d) {
+            int nx = player.pos.x + dirs[d][0];
+            int ny = player.pos.y + dirs[d][1];
+            if (map.inBounds(nx, ny) && map.getCell(nx, ny) == SYM_WALL) {
+                map.setCell(nx, ny, SYM_FLOOR);
+                exitsCreated++;
+            }
+        }
+    }
 
     // На новом уровне всегда начинаем без активного эффекта краба.
     isPlayerControlsInverted = false;
@@ -967,7 +1043,7 @@ void GameState::generateNewLevel()
                 !(gx == player.pos.x && gy == player.pos.y) &&
                 !map.isExit(gx, gy) &&
                 map.getItemAt(gx, gy) == nullptr) {
-                map.addGhostItem(gx, gy);
+                map.addTrapItem(gx, gy);
                 break;
             }
         }
