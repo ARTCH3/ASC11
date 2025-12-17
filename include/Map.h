@@ -44,7 +44,7 @@ public:
     Map();
     ~Map();
 
-    void generate();
+    void generate(int currentLevel = 1); // Уровень для контроля спавна предметов на первом уровне
     char getCell(int x, int y) const;
     void setCell(int x, int y, char symbol);
     bool isWall(int x, int y) const;
@@ -53,9 +53,13 @@ public:
 
     // FOV функции с использованием TCODMap
     void computeFOV(int playerX, int playerY, int radius, bool lightWalls = true);
+    // Добавляет FOV от дополнительного источника света (не перезаписывает существующий FOV)
+    void addFOV(int sourceX, int sourceY, int radius, bool lightWalls = true);
     void revealAll(); // Сделать всю карту видимой и исследованной
     bool isVisible(int x, int y) const;
     bool isExplored(int x, int y) const;
+    // Отмечаем клетки внутри круга как "исследованные" (но не обязательно видимые).
+    void revealCircle(int cx, int cy, int radius);
 
     // Предметы на карте
     std::vector<Item> items;
