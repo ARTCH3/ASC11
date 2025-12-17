@@ -657,6 +657,10 @@ void Graphics::drawUI(const Entity& player,
                       bool questActive,
                       int questKills,
                 int questTarget,
+                const std::vector<std::pair<int, int>>& questTargets,
+                const std::vector<int>& questProgress,
+                int questType,
+                bool perkQuestHighlightEnabled,
                 bool seenRat,
                 bool seenBear,
                 bool seenSnake,
@@ -996,7 +1000,7 @@ void Graphics::drawUI(const Entity& player,
             console.at({rightPanelStartX + x, legendY}).bg = black;
         }
     }
-    legendY++;
+        legendY++;
     
     // Другие элементы (не мобы и не предметы)
     printLegendEntry('#', "Stair", tcod::ColorRGB{200, 200, 200}, true);
@@ -1101,9 +1105,95 @@ void Graphics::drawUI(const Entity& player,
     //     centerInfo.push_back(buffer);
     // }
     
-    if (questActive && questTarget > 0) {
-        snprintf(buffer, sizeof(buffer), "Quest: %d/%d", questKills, questTarget);
-        centerInfo.push_back(buffer);
+    // Отображение квеста с цветной подсветкой (если модификатор активен)
+    if (questActive) {
+        std::string questText = "Quest: ";
+        
+        // Формируем текст прогресса
+        if (questTargets.empty() || !perkQuestHighlightEnabled) {
+            // Старый формат для обратной совместимости
+            if (questTarget > 0) {
+                snprintf(buffer, sizeof(buffer), "Quest: %d/%d", questKills, questTarget);
+                centerInfo.push_back(buffer);
+            }
+        } else {
+            // Новый формат с цветами
+            // Собираем информацию о прогрессе
+            std::string progressText = "";
+            for (size_t i = 0; i < questTargets.size(); ++i) {
+                if (i > 0) progressText += "/";
+                progressText += std::to_string(questProgress[i]) + "/" + std::to_string(questTargets[i].second);
+            }
+            questText += progressText;
+            
+            // Функция для получения цвета по символу
+            auto getColorForSymbol = [](int symbol) -> tcod::ColorRGB {
+                if (symbol == SYM_ENEMY) return tcod::ColorRGB{255, 50, 50};      // Красный - Крыса
+                else if (symbol == SYM_BEAR) return tcod::ColorRGB{139, 69, 19};  // Коричневый - Медведь
+                else if (symbol == SYM_SNAKE) return tcod::ColorRGB{60, 130, 60};  // Зеленый - Змея
+                else if (symbol == SYM_GHOST) return tcod::ColorRGB{170, 170, 170}; // Серый - Призрак
+                else if (symbol == SYM_CRAB) return tcod::ColorRGB{255, 140, 0};   // Оранжевый - Краб
+                else if (symbol == SYM_ITEM) return tcod::ColorRGB{255, 255, 0};   // Желтый - Аптечка
+                else if (symbol == SYM_MAX_HP) return tcod::ColorRGB{0, 204, 0};    // Зеленый - MaxHP
+                else if (symbol == SYM_SHIELD) return tcod::ColorRGB{255, 255, 255}; // Белый - Щит
+                else if (symbol == SYM_TRAP) return tcod::ColorRGB{40, 40, 40};    // Темно-серый - Ловушка
+                return tcod::ColorRGB{200, 200, 200}; // По умолчанию серый
+            };
+            
+            // Распределяем цвета по буквам "Quest" (5 букв)
+            const std::string questLabel = "Quest";
+            int numTargets = static_cast<int>(questTargets.size());
+            
+            // Вычисляем цвета для каждой буквы
+            std::vector<tcod::ColorRGB> letterColors(5);
+            if (numTargets == 1) {
+                // Один моб/предмет - все буквы одного цвета
+                tcod::ColorRGB singleColor = getColorForSymbol(questTargets[0].first);
+                for (int i = 0; i < 5; ++i) {
+                    letterColors[i] = singleColor;
+                }
+        } else {
+                // Несколько целей - распределяем цвета равномерно
+                // Каждая цель получает примерно равное количество букв
+                int lettersPerTarget = 5 / numTargets;
+                int extraLetters = 5 % numTargets;
+                
+                int letterIdx = 0;
+                for (int targetIdx = 0; targetIdx < numTargets; ++targetIdx) {
+                    tcod::ColorRGB targetColor = getColorForSymbol(questTargets[targetIdx].first);
+                    int lettersForThisTarget = lettersPerTarget + (targetIdx < extraLetters ? 1 : 0);
+                    for (int j = 0; j < lettersForThisTarget && letterIdx < 5; ++j) {
+                        letterColors[letterIdx++] = targetColor;
+                    }
+                }
+            }
+            
+            // Рисуем "Quest" с цветами по центру нижней панели
+            int centerX = gameAreaStartX + Map::WIDTH / 2;
+            int questY = screenHeight - bottomPanelHeight + 2; // Примерная позиция
+            
+            int questStartX = centerX - static_cast<int>(questLabel.size()) / 2;
+            for (size_t i = 0; i < questLabel.size(); ++i) {
+                int x = questStartX + static_cast<int>(i);
+                if (console.in_bounds({x, questY})) {
+                    console.at({x, questY}).ch = questLabel[i];
+                    console.at({x, questY}).fg = letterColors[i];
+                    console.at({x, questY}).bg = black;
+                }
+            }
+            
+            // Рисуем прогресс под "Quest"
+            int progressY = questY + 1;
+            int progressStartX = centerX - static_cast<int>(progressText.size()) / 2;
+            for (size_t i = 0; i < progressText.size(); ++i) {
+                int x = progressStartX + static_cast<int>(i);
+                if (console.in_bounds({x, progressY})) {
+                    console.at({x, progressY}).ch = progressText[i];
+                    console.at({x, progressY}).fg = tcod::ColorRGB{200, 200, 200};
+                    console.at({x, progressY}).bg = black;
+                }
+            }
+        }
     }
     
     // Выводим информацию по центру нижней панели

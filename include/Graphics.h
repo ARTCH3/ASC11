@@ -74,6 +74,11 @@ public:
                 bool questActive,
                 int questKills,
                 int questTarget,
+                // Расширенная информация о квесте для цветной подсветки
+                const std::vector<std::pair<int, int>>& questTargets,
+                const std::vector<int>& questProgress,
+                int questType,
+                bool perkQuestHighlightEnabled,
                 // Флаги, видел ли игрок этих мобов/предметы (для Legend: ? - ???)
                 bool seenRat,
                 bool seenBear,
